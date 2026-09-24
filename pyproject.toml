@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "waves-stem-sed"
+version = "0.1.0"
+description = "Independent frozen SED validation for WAVES stems"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26,<3"]
+
+[project.optional-dependencies]
+atst = [
+  "torch==2.10.0", "torchaudio==2.10.0", "einops==0.8.1",
+  "soundfile==0.13.1", "librosa==0.11.0",
+]
+dev = ["pytest>=8,<9", "ruff>=0.11,<1"]
+
+[project.scripts]
+waves-sed = "waves_sed.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+waves_sed = ["resources/*.json", "resources/*.csv", "resources/*.md",
+             "_vendor/pretrained_sed/LICENSE", "_vendor/pretrained_sed/*.md",
+             "_vendor/pretrained_sed/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires the official ATST-F checkpoint"]
+
+[tool.ruff]
+line-length = 100
+extend-exclude = ["src/waves_sed/_vendor"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+

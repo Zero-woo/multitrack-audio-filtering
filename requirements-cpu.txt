@@ -1,0 +1,7 @@
+# Isolated, tested CPU prototype. Use the same index for both torch packages.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.10.0+cpu
+torchaudio==2.10.0+cpu
+# Keep the initial reference environment compatible with upstream numpy<2.
+numpy==1.26.4
+-e .[atst,dev]

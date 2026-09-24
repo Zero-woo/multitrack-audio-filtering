@@ -1,0 +1,19 @@
+{
+  "source": "https://github.com/fschmid56/PretrainedSED",
+  "revision": "1aa47e482f7e89904cba2338999345025d8b4e36",
+  "label_count": 447,
+  "label_order_source": {
+    "path": "data_util/audioset_classes.py",
+    "variable": "as_strong_train_classes",
+    "sha256": "771adb63768b349171a1668b4b0c2f932f6db1b21e10450c7e9136c0397e076f"
+  },
+  "label_ids_source": {
+    "path": "hf_dataset_gen/metadata/class_labels_indices_strong.csv",
+    "sha256": "704a8882f15156fa1b941e27af09e9ca6c92a6fa376c0397d705738c2ee33226"
+  },
+  "generated": {
+    "path": "audioset_strong.json",
+    "sha256": "3edfab3f62ed1013d6890eaa9c27ba4e240de39647179d5cefeb3bad872cfbd1"
+  },
+  "transformation": "Enumerate as_strong_train_classes in declaration order and join names against the raw two-column (id,name) metadata CSV."
+}

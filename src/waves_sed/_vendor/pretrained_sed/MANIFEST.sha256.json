@@ -1,0 +1,31 @@
+{
+  "source": "https://github.com/fschmid56/PretrainedSED",
+  "revision": "1aa47e482f7e89904cba2338999345025d8b4e36",
+  "files": [
+    {
+      "path": "models/atstframe/ATSTF_wrapper.py",
+      "upstream_sha256": "76e5d0d03460541fc713d9830c544c22f31b6d4393f81e752d47dc0802a6ead2",
+      "vendored_sha256": "501d06d049e2f3db0829c839f5eb79a3b102e186f8eb98c6b34a944bd5dfdffa"
+    },
+    {
+      "path": "models/atstframe/audio_transformer.py",
+      "upstream_sha256": "c63cf97ab58e9ad4095cf5ccb27fdd9bf630a7916a00a3253d7f81e0b1e3c54a",
+      "vendored_sha256": "c63cf97ab58e9ad4095cf5ccb27fdd9bf630a7916a00a3253d7f81e0b1e3c54a"
+    },
+    {
+      "path": "models/atstframe/transformer.py",
+      "upstream_sha256": "5470ea310ff28d3b592ff3f8e9a17c0119cbb1f6f4f28f05074eb1991162148f",
+      "vendored_sha256": "5470ea310ff28d3b592ff3f8e9a17c0119cbb1f6f4f28f05074eb1991162148f"
+    },
+    {
+      "path": "models/transformer_wrapper.py",
+      "upstream_sha256": "8ca7284475e47dc00a5f476bd8d937400e35c95ae3164b8fd9111505c4a4dee8",
+      "vendored_sha256": "8ca7284475e47dc00a5f476bd8d937400e35c95ae3164b8fd9111505c4a4dee8"
+    },
+    {
+      "path": "LICENSE",
+      "upstream_sha256": "399acc6d903cfd65a6cd5baba6a99af3ee534d79161b07854c1a6ffeab3dc88b",
+      "vendored_sha256": "399acc6d903cfd65a6cd5baba6a99af3ee534d79161b07854c1a6ffeab3dc88b"
+    }
+  ]
+}
