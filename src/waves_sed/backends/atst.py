@@ -76,6 +76,10 @@ class ATSTBackend:
         audio_sha256 = sha256(audio_path)
         audio, audio_metadata = load_audio(audio_path)
         starts, ends = frame_grid(len(audio))
+        # Resampling rounds sample count up. Report bins end at the original WAV duration.
+        valid = starts < audio_metadata["duration_seconds"]
+        starts = starts[valid]
+        ends = np.minimum(ends[valid], audio_metadata["duration_seconds"])
         model = self.model if self.model is not None else self._load_model()
         chunks = []
         with torch.inference_mode():
@@ -106,7 +110,7 @@ class ATSTBackend:
                 "device": self.device,
                 "frame_hop_seconds": 0.04,
                 "chunk_seconds": 10.0,
-                "frame_time_convention": "half-open support [start,end); final frame clipped",
+                "frame_time_convention": "half-open output bin [start,end); final bin clipped to original duration",
                 "smoothing": None,
                 "threshold": None,
                 "model_frozen": True,

@@ -4,3 +4,5 @@
 *.json text eol=lf
 *.toml text eol=lf
 *.csv text eol=lf
+*.txt text eol=lf
+**/LICENSE text eol=lf

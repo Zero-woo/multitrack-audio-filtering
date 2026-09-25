@@ -156,5 +156,5 @@ def test_loading_cache_rejects_corrupt_data(tmp_path, prediction, field, corrupt
 def test_loading_cache_rejects_missing_required_fields(tmp_path):
     path = tmp_path / "incomplete.npz"
     np.savez_compressed(path, schema_version=np.array(1, dtype=np.int64))
-    with pytest.raises((KeyError, ValueError)):
+    with pytest.raises(ValueError):
         FramePrediction.load(path)

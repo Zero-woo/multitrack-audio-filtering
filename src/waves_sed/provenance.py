@@ -8,7 +8,7 @@ CHECKPOINT_URL = (
 )
 # Computed from the official release download, not a publisher-signed digest.
 CHECKPOINT_SHA256 = "fbf2577958e3648d55ee8cea7e0e5260c4505fb0c13964e1ec81bc367cee5eda"
-PREPROCESSING = "librosa-soxr_hq-mono-16k-zero-pad-10s-sigmoid-40ms-v1"
+PREPROCESSING = "librosa-soxr_hq-mono-16k-zero-pad-10s-sigmoid-40ms-original-duration-v1"
 
 
 def sha256(path: str | Path) -> str:

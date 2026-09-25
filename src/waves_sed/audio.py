@@ -30,7 +30,10 @@ def load_audio(path: str | Path):
     info = sf.info(path)
     if info.frames == 0:
         raise ValueError("Audio contains no samples")
-    audio, _ = librosa.load(path, sr=16000, mono=True, dtype=np.float32, res_type="soxr_hq")
+    try:
+        audio, _ = librosa.load(path, sr=16000, mono=True, dtype=np.float32, res_type="soxr_hq")
+    except librosa.util.exceptions.ParameterError as error:
+        raise ValueError(f"Invalid audio: {error}") from error
     if not len(audio) or not np.isfinite(audio).all():
         raise ValueError("Audio is empty or contains nonfinite samples")
     return audio, {
@@ -40,5 +43,6 @@ def load_audio(path: str | Path):
         "original_duration_seconds": info.duration,
         "inference_sample_rate": 16000,
         "inference_samples": len(audio),
-        "duration_seconds": len(audio) / 16000,
+        "resampled_duration_seconds": len(audio) / 16000,
+        "duration_seconds": info.duration,
     }

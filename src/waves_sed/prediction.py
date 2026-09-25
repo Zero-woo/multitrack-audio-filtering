@@ -4,6 +4,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from zipfile import BadZipFile
 
 import numpy as np
 
@@ -30,6 +31,11 @@ class FramePrediction:
             raise ValueError("Probabilities must be finite and in [0, 1]")
         if start.shape != (len(scores),) or end.shape != start.shape:
             raise ValueError("Frame time dimensions do not match probabilities")
+        if any(
+            not np.issubdtype(values.dtype, np.number) or np.iscomplexobj(values)
+            for values in (start, end)
+        ):
+            raise ValueError("Frame times must be real numbers")
         if (
             not np.isfinite(start).all()
             or not np.isfinite(end).all()
@@ -41,8 +47,8 @@ class FramePrediction:
         for values, kind in [(self.class_ids, "IDs"), (self.class_names, "names")]:
             if (
                 len(values) != scores.shape[1]
-                or len(set(values)) != len(values)
                 or any(not isinstance(v, str) or not v.strip() for v in values)
+                or len(set(values)) != len(values)
             ):
                 raise ValueError(f"Class {kind} must be unique nonempty strings matching columns")
         if not isinstance(self.metadata, dict):
@@ -82,16 +88,19 @@ class FramePrediction:
 
     @classmethod
     def load(cls, path: str | Path) -> "FramePrediction":
-        with np.load(path, allow_pickle=False) as data:
-            if data["schema_version"].item() != SCHEMA_VERSION:
-                raise ValueError("Unsupported prediction schema version")
-            result = cls(
-                probabilities=data["probabilities"],
-                frame_start_seconds=data["frame_start_seconds"],
-                frame_end_seconds=data["frame_end_seconds"],
-                class_ids=tuple(data["class_ids"].tolist()),
-                class_names=tuple(data["class_names"].tolist()),
-                metadata=json.loads(data["metadata_json"].item()),
-            )
-        result.validate()
-        return result
+        try:
+            with np.load(path, allow_pickle=False) as data:
+                if data["schema_version"].item() != SCHEMA_VERSION:
+                    raise ValueError("Unsupported prediction schema version")
+                result = cls(
+                    probabilities=data["probabilities"],
+                    frame_start_seconds=data["frame_start_seconds"],
+                    frame_end_seconds=data["frame_end_seconds"],
+                    class_ids=tuple(data["class_ids"].tolist()),
+                    class_names=tuple(data["class_names"].tolist()),
+                    metadata=json.loads(data["metadata_json"].item()),
+                )
+            result.validate()
+            return result
+        except (KeyError, TypeError, ValueError, BadZipFile, EOFError) as error:
+            raise ValueError(f"Invalid prediction cache {path}: {error}") from error

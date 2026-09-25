@@ -43,6 +43,13 @@ def summary(prediction: FramePrediction, top_k: int = 10) -> dict:
 
 
 def export_csv(prediction: FramePrediction, path: Path) -> None:
+    source = prediction.metadata.get("audio_path")
+    if isinstance(source, str) and source:
+        source_path = Path(source)
+        if path.resolve() == source_path.resolve() or (
+            path.exists() and source_path.exists() and path.samefile(source_path)
+        ):
+            raise ValueError("CSV must not overwrite source audio recorded in prediction metadata")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream)
@@ -104,6 +111,14 @@ def main(argv: list[str] | None = None) -> int:
             path = download_checkpoint(args.checkpoint)
             print(json.dumps({"checkpoint": str(path.resolve()), "sha256": sha256(path)}))
             return 0
+        if args.csv:
+            protected = (
+                {args.prediction.resolve()}
+                if args.command == "inspect"
+                else {args.audio.resolve(), args.output.resolve(), args.checkpoint.resolve()}
+            )
+            if args.csv.resolve() in protected:
+                raise ValueError("CSV must not overwrite audio, checkpoint or prediction cache")
         if args.command == "inspect":
             prediction = FramePrediction.load(args.prediction)
             result = summary(prediction)
@@ -133,13 +148,6 @@ def main(argv: list[str] | None = None) -> int:
             result = summary(prediction)
             result.update(output=str(args.output.resolve()), cache_hit=cache_hit)
         if args.csv:
-            protected = (
-                {args.prediction.resolve()}
-                if args.command == "inspect"
-                else {args.audio.resolve(), args.output.resolve(), args.checkpoint.resolve()}
-            )
-            if args.csv.resolve() in protected:
-                raise ValueError("CSV must not overwrite audio, checkpoint or prediction cache")
             export_csv(prediction, args.csv)
             result["csv"] = str(args.csv.resolve())
         result["elapsed_seconds"] = round(perf_counter() - started, 3)
