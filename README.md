@@ -3,12 +3,31 @@
 WAVES가 생성한 stem을 frozen AudioSet-Strong SED 모델로 검사하는 독립적인 후처리 프로젝트입니다.
 WAVES 생성 파이프라인을 수정하거나 모델을 학습하지 않습니다.
 
-현재 작업 범위는 **Phase 1 분석과 Phase 2 단일 WAV 추론 prototype**입니다.
+현재 **Phase 1~3: 구조 분석, 단일 WAV 추론, WAVES metadata adapter와 명시적 mapping**을 구현했습니다.
 WAVES의 planned support와 SED 출력 비교는 내부 consistency 검사이며,
 실제 영상과의 동기화를 입증하지 않습니다.
 
 구조 분석, 확인된 metadata 누락, 단계별 계획은 [분석 문서](docs/phase1-analysis.md),
-실행 결과와 검증 범위는 [Phase 2 검증 기록](docs/phase2-validation.md)에 있습니다.
+추론 검증은 [Phase 2 검증 기록](docs/phase2-validation.md),
+metadata/mapping 사용법은 [Phase 3 문서](docs/phase3-validation.md)에 있습니다.
+
+## WAVES metadata와 source mapping (Phase 3)
+
+실제 frozen 자료 29개 clip/62개 stem을 모델 없이 정규화할 수 있습니다.
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed adapt-waves --frozen-finals C:/WAVES/data/frozen_pass2/frozen_finals.json --frozen-reports C:/WAVES/data/frozen_pass2/frozen_reports.json --mappings configs/source_mappings.example.json --output outputs/phase3/frozen-stems.json
+.venv/Scripts/python.exe -m waves_sed map-source --description "dog barking" --mappings configs/source_mappings.example.json
+```
+
+실제 WAVES 실행 결과는 `adapt-waves --metadata ... --sam-manifest ...` 또는 `--dsp-report ...`로
+연결합니다. Mapping은 최종 label을 기준으로 명시적 alias만 사용합니다.
+설정에 없는 설명은 `unsupported_mapping`으로 남기고, planned description·role·시간·merge 이력은
+별도로 보존합니다. `supported`는 mapping 가능 여부이며 소리 검출이나 품질 통과를 의미하지 않습니다.
+
+공식 ontology와 ATST-F vocabulary에는 차이가 있습니다. 447개 모델 ID 중 31개는 공식 archive에
+없고, 11개는 표시명이 다릅니다. 실제 ID를 보존하여 차이를 보고하며 없는 hierarchy는 추정하지 않습니다.
+상세한 누락/시간 기준 정책과 cache의 target max 집계는 [Phase 3 문서](docs/phase3-validation.md)를 참고하세요.
 
 ## 설치 및 실행 (PowerShell)
 
@@ -74,9 +93,9 @@ print(prediction.class_ids[0], prediction.class_names[0])
 # 추후 mapping된 class column들의 max로 P_target(t)를 계산할 수 있습니다.
 ```
 
-AudioSet 전체 ontology, WAVES source mapping, event 추출, metric/report와 필터 판정은
-후속 단계입니다. 포함된 447-class vocabulary는 실제 metadata에서 가져온 모델 출력 목록이며,
-임의 source-to-class mapping을 포함하지 않습니다.
+공식 AudioSet ontology와 명시적 WAVES source mapping은 Phase 3에 구현했습니다.
+Event 추출, metric/report와 필터 판정은 후속 단계입니다. 447-class vocabulary와 ontology는
+서로 다른 metadata이며, class ID로 연결합니다.
 
 ## 검증
 
@@ -106,8 +125,8 @@ git -C .cache/PretrainedSED checkout 1aa47e482f7e89904cba2338999345025d8b4e36
 ## WAVES 연결 시 주의할 실제 차이
 
 `C:\WAVES`의 최종 `final/<key>/metadata.json`에는 label/role과 candidate provenance가 있지만,
-description과 `activity_intervals`는 없습니다. 후속 adapter는 SAM manifest 또는 DSP report를
-candidate ID로 조인해야 합니다. 특히 relabel, role 변경, merge가 있으면 기존 planned support의
+description과 `activity_intervals`는 없습니다. adapter는 SAM manifest 또는 DSP report를
+candidate ID로 조인합니다. 특히 relabel, role 변경, merge가 있으면 기존 planned support의
 의미가 달라질 수 있어 그 상태를 보존해야 합니다. 현재 WAVES checkout에는 실제 WAV가 없어
 이번 추론 검증에는 upstream의 공개 예제 WAV를 사용했습니다.
 

@@ -1,18 +1,19 @@
 # 다음 Codex 세션 인수인계
 
-최종 갱신: 2026-09-25. 사용자가 일시 중지를 요청한 후 재개를 요청하여,
-남은 Phase 2 오류 수정과 검증·문서 정리를 완료했다.
-**Phase 1 분석과 Phase 2 단일 WAV frozen ATST-F 추론이 완료된 상태**다.
-이 문서는 중지 당시 초안을 대체하며, 다음 세션은 Phase 3부터 이어 갈 수 있다.
+최종 갱신: 2026-09-27. **Phase 1~3: 구조 분석, frozen ATST-F 추론,
+WAVES metadata adapter와 명시적 AudioSet mapping을 완료했다.**
+중간 중단 후 재개하여 전체 테스트·실제 frozen 자료 변환·패키지 검증과 커밋까지 진행했다.
+다음 단계는 Phase 4의 TemporalReference, event extraction, 역할별 metric/report다.
 
 ## 1. 다음 세션에서 가장 먼저 확인할 것
 
 1. `git status --short`, `git log -6 --oneline`과 이 문서를 읽는다.
 2. `docs/phase1-analysis.md`에서 실제 WAVES 필드·merge/role 변경 문제를 확인한다.
-3. `docs/phase2-validation.md`에서 완료된 검증 범위와 재현 명령을 확인한다.
+3. `docs/phase3-validation.md`에서 현재 API, 실제 ontology와 모델 vocabulary 차이,
+   시간 기준 상태와 검증 범위를 확인한다. 추론 기록은 `docs/phase2-validation.md`다.
 4. `C:\WAVES`에 실제 run/WAV가 추가되었는지 확인한다. 현재 checkout에는 WAV가 없다.
-5. 새 사용자 지시를 확인한다. Phase 3 작업이라면 adapter/ontology/manual mapping부터 구현한다.
-   실제 WAV 경로가 없을 때 frozen JSON의 `audio_id`로 파일명을 만들어 내지 않는다.
+5. 새 사용자 지시를 확인한다. Phase 4에서는 `reference_status=ambiguous`인 planned support를
+   확정된 기준처럼 사용하지 않는다. 실제 WAV가 없을 때 `audio_id`로 파일명을 만들지 않는다.
 
 ## 2. 요청과 작업 범위
 
@@ -24,6 +25,7 @@
 - 전체 목표는 독립 pretrained SED로 WAVES stem의 의미·시간 일관성을 측정하는 후처리 도구다.
   생성 모델 수정, 학습/fine-tuning, reference WAV 유사도 비교는 하지 않는다.
 - 먼저 구조를 분석·설명하고 최소 단일-WAV prototype을 검증하라는 요청에 따라 Phase 1~2를 진행했다.
+- 이어서 사용자가 다음 단계를 요청하여 Phase 3을 구현했다. Phase 4~7은 아직 구현하지 않았다.
 - WAVES planned support는 영상의 정답 시간이 아니다. 내부 consistency와 영상 동기화는 구분한다.
 - 사용자 요청대로 의미 있는 작업 단위마다 로컬 commit을 남겼다. Push는 하지 않았다.
 
@@ -44,9 +46,15 @@
 - CLI 입력/출력 덮어쓰기 보호. 리뷰에서 발견한 `inspect --csv` 원본 WAV 보호 누락도 수정했다.
   metadata의 원본 경로와 hardlink alias를 검사하고 regression test를 추가했다.
 - 오프라인 테스트, 선택적 실제 checkpoint 통합 테스트, upstream 수치 비교 스크립트.
+- Materialized final metadata와 frozen finals/reports를 공통 StemMetadata로 변환한다.
+  최종 의미/role과 이전 계획을 구분하고 merge/변경/누락 및 원본/hash를 보존한다.
+- 선택 parent의 planned support만 사용한다. reference는 planned/ambiguous/missing으로 구분한다.
+- 공식 ontology 632개 노드의 DAG 로딩/검증/ancestor·descendant 탐색과 CC BY-SA attribution.
+- 모델 447개 ID 중 공식 archive에 없는 31개와 이름이 다른 11개를 명시적으로 보고한다.
+- JSON 수동 mapping, 정확한 alias, 선택적 descendant 확장, unsupported 상태와 ID 기반 target max.
+- `adapt-waves`와 `map-source` CLI. 모델이나 새 의존성 없이 동작하고 원본 파일을 보호한다.
 
-**미구현 후속 기능:** WAVES adapter, 전체 ontology loader, manual source mapping,
-TemporalReference, event extraction, 역할별 metric, 집계 report/시각화/batch,
+**미구현 후속 기능:** TemporalReference, event extraction, 역할별 metric, 집계 report/시각화/batch,
 controlled corruption, PASS/REVIEW/FAIL 정책. 이들을 구현 완료로 취급하지 않는다.
 
 ## 4. 파일별 구현/변경 내용
@@ -58,6 +66,7 @@ controlled corruption, PASS/REVIEW/FAIL 정책. 이들을 구현 완료로 취�
 | `README.md` | 설치, CLI, NPZ 계약, 검증 명령, WAVES 연결 주의사항, 로드맵 |
 | `docs/phase1-analysis.md` | 실제 WAVES 필드/경로/누락/merge, 환경과 단계별 설계 분석 |
 | `docs/phase2-validation.md` | 실제 checkpoint 추론과 검증 결과/한계/재현 명령 |
+| `docs/phase3-validation.md` | adapter/mapping 사용법, ontology 차이, 누락/시간 기준 정책, 실제 자료 검증 |
 | `HANDOFF.md` | 현재 상태와 후속 작업 인수인계 |
 | `THIRD_PARTY_NOTICES.md` | MIT/revision/metadata 및 checkpoint·예제 WAV 출처 |
 | `pyproject.toml` | src package, NumPy 기본 의존성, atst/dev extras, CLI/data, pytest/Ruff |
@@ -79,6 +88,27 @@ controlled corruption, PASS/REVIEW/FAIL 정책. 이들을 구현 완료로 취�
 | `tests/test_audio_loading.py` | stereo mono 평균, 22.05→16 kHz, empty/nonfinite 입력 거부 |
 | `tests/test_atst_integration.py` | 공식 모델 stereo/22.05 kHz/여러 chunk/부분 tail/동결/NPZ, 기본 skip |
 | `scripts/verify_upstream.py` | pinned clean upstream을 별도 프로세스로 실행, waveform/mel/확률 수치 비교 |
+
+Phase 3 추가 파일과 변경 내용:
+
+| 파일 | 구현/변경 |
+| --- | --- |
+| `src/waves_sed/metadata.py` | StemMetadata와 JSON 직렬화 |
+| `src/waves_sed/adapters/__init__.py` | adapter API export |
+| `src/waves_sed/adapters/waves.py` | load_materialized/load_frozen, candidate 조인/충돌 검사, 선택 parent support/provenance, 명시적 audio ID mapping |
+| `src/waves_sed/ontology.py` | 공식/custom DAG, hash/중복/cycle 검사, 탐색, vocabulary coverage |
+| `src/waves_sed/mapping.py` | JSON rule 검증, exact alias, class ID 해석, unsupported와 raw max 집계 |
+| `src/waves_sed/phase3.py` | 새 CLI, JSON 출력, 입력 metadata/config/음원/영상 덮어쓰기 방지 |
+| `src/waves_sed/cli.py` | adapt-waves/map-source 연결; 기존 추론 경로 유지 |
+| `configs/source_mappings.example.json` | 실제 Bark/Chop/Chopping (food)/Walk, footsteps ID의 제한된 예제 |
+| `src/waves_sed/resources/audioset_ontology.json` | 공식 archive 원본 632 nodes |
+| `src/waves_sed/resources/audioset_ontology.provenance.json` | source/revision/hash/license |
+| `src/waves_sed/resources/audioset_ontology.LICENSE.md` | Google/Dan Ellis 및 CC BY-SA 4.0 attribution |
+| `tests/test_ontology.py`, `tests/test_mapping.py` | graph/metadata 차이/exact mapping/unsupported/column 정렬 검증 |
+| `tests/test_waves_adapter.py`, `tests/test_phase3_cli.py` | 실제 schema/누락/merge/role 변경/CLI/원본 보호 검증 |
+| `tests/fixtures/waves/frozen_finals.json`, `frozen_reports.json`, `README.md` | 원본 WAVES 4개 사례의 최소 fixture와 출처 |
+
+README/THIRD_PARTY_NOTICES/HANDOFF도 Phase 3 상태로 갱신했다. 새 dependency는 없다.
 
 Vendor 루트: `src/waves_sed/_vendor/pretrained_sed/`.
 
@@ -117,10 +147,20 @@ Resources 루트: `src/waves_sed/resources/`.
 - 변경하지 않은 upstream과 첫10초 비교: waveform/mel/probabilities의 **최대 절대 차이 모두0**.
   허용 오차 1e-6, parameter freeze/module eval 확인. 이 비교 JSON은 당시 tool output에만 있다.
 - 실제 checkpoint 통합 테스트 포함 실행: **79 passed**, 11.06초 (CSV regression3개 추가 이전).
-- 최종 오프라인 실행: **81 passed, 1 skipped**, 17.09초. skip은 환경변수 없는 실제 모델 test이다.
+- Phase 2 최종 오프라인 실행: **81 passed, 1 skipped**, 17.09초.
+- Phase 3 최종 전체 실행: **226 passed, 1 skipped**, 9.83초. skip은 환경변수 없는 실제 모델 test다.
 - audioread의 Python3.11 `aifc/audioop/sunau` deprecation warning3개만 있다.
 - Ruff check/format check, dependency check, CPU requirements dry-run, wheel build 통과.
-- 최신 CLI 보호 수정 후 wheel을 다시 만들지는 않았다. 배포가 필요하면 `uv build --wheel` 재실행.
+- Phase 3 최종 코드로 wheel을 빌드했다. 별도 `.cache/phase3-package-smoke` 환경에 wheel과
+  NumPy만 설치해 632-node ontology/447-class metadata/mapping을 검증했다. torch는 설치되지 않았다.
+
+Phase 3 실제 자료 검증:
+- WAVES frozen 29 clips / 62 stems 모두 정규화했다.
+- relabel41 / role변경2 / merge10 / 음원경로누락62 / video ID누락62.
+- reference ambiguous43 / planned19. 예제 mapping supported2 / unsupported60.
+- `outputs/phase3/frozen-stems.json`: 전체 normalized metadata와 mapping/provenance.
+- `outputs/phase3/metro-chop-mapping.json`: 기존 실제 NPZ의 두 class target max.
+  938 frames를 직접 NumPy max와 비교하여 동일함을 확인했다. 이 소리가 검출되었다는 주장은 아니다.
 
 이 입력은 WAVES stem이 아니라 upstream 공개 예제다. 이 검증은 추론 경로의 정확성 확인이며
 SED의 실제 인식 성능이나 filter 품질을 입증하지 않는다.
@@ -138,8 +178,10 @@ Git commit:
 - `a7beefd`: WAVES 산출물 분석/통합 계획
 - `f958804`: frozen inference와 raw cache
 - `d01aee7`: 입력 경계 처리와 CSV source 보호, 추가 검증
-- 최종 사용/검증/인수인계 문서는 위 commit 다음의 문서 commit으로 정리한다.
-  정확한 최신 hash는 `git log`를 확인한다.
+- `bc10e83`: Phase 2 사용/검증/인수인계 문서
+- `f47c66c`: 공식 ontology와 명시적 source mapping
+- `fe25584`: WAVES adapter와 offline mapping CLI
+- Phase 3 문서 commit은 그 다음에 남긴다. 정확한 최신 hash는 `git log`를 확인한다.
 
 로컬 Git 제외 자산:
 - `.cache/PretrainedSED`: 공식 repository clone, revision
@@ -153,26 +195,27 @@ Git commit:
   iscence/Freesound752547, upstream attribution상 CC BY-NC4.0. Git에 재배포하지 않았다.
 - `dist/waves_stem_sed-0.1.0-py3-none-any.whl`: 빌드 검증용 산출물.
 - `outputs/`: raw NPZ와 실제 실행 요약.
+- `.cache/audioset-ontology`: 공식 ontology 조사용 clone. 일반 실행에는 필요 없다.
 
 ## 7. 미해결 제약과 다음 작업 순서
 
-Phase1~2에서 발견한 코드 오류는 수정했다. 남은 제약:
+Phase 1~3에서 발견한 코드 오류는 수정했다. 남은 제약:
 - 실제 WAVES WAV 없음. 향후 실제 stem 검증은 materialized run 또는 명시적인 경로 매핑이 필요.
 - CUDA/Linux/다른 Python 버전 실행은 미검증.
-- Phase3~7 기능은 아직 미구현. 현재 PASS/FAIL을 내리지 않음.
-- WAVES merge/relabel/role 변경 시 planned support 해석은 adapter 정책으로 명시해야 함.
+- Phase 4~7 기능은 아직 미구현. 현재 PASS/FAIL을 내리지 않음.
+- 공식 ontology에 없는 31개 모델 ID는 hierarchy가 알려져 있지 않음. 직접 mapping은 가능하나 descendant 확장 금지.
+- WAVES planned support의 ambiguous 상태를 평가에 사용할 정책은 Phase 4에서 명시해야 함.
 
 후속 순서:
 1. 사용자가 새로 요청하는 범위와 현재 Git 상태 확인.
-2. WAVES adapter를 구현하기 전 `final/<key>/metadata.json` + SAM manifest/DSP report의
-   candidate 조인을 실제 schema와 frozen fixture로 확인.
-3. `StemMetadata`에 final 의미/role, 원래 description/role/support와 provenance를 구분해 보존.
-   파일 경로/시간 누락을 추정하지 않고 명시적인 상태로 남김.
-4. 실제 AudioSet ontology loader와 명시적 수동 mapping config 구현.
-   모호한 source는 `unsupported_mapping`; allowed family 여러 class 지원.
-5. Phase3 테스트/문서/commit 후 Phase4: event extraction, 최적 onset matching,
-   span 구간 집합 IoU/coverage, ambience occupancy/confidence와 JSON/CSV.
-   synthetic interval로 missing/extra/timing을 검증하고 모든 threshold를 config로 분리.
+2. TemporalReference interface와 WavesPlannedReference를 만들고 향후 ExternalVideoReference 경계를 둔다.
+   ambiguous/missing support를 자동으로 신뢰하지 않는 명시적인 정책을 정한다.
+3. 기존 raw cache와 명시적 mapping의 target curve를 받아 event threshold/median smoothing/
+   minimum duration을 config로 둔 event extraction을 구현한다. 추론을 재실행하지 않는다.
+4. 역할별 metric: onset의 tolerance 제한 최적 일대일 matching, span의 구간 집합 IoU/coverage,
+   ambience의 occupancy/confidence. Synthetic interval로 missing/extra/timing과 경계조건을 검증한다.
+5. stem/clip/dataset JSON/CSV report를 구현한다. cache가 실제 stem과 일치하는지 입력 hash도 확인한다.
+   mapping/metadata 부족과 실제 event 부재를 구분한다. 아직 calibration되지 않은 PASS/FAIL을 강제하지 않는다.
 6. 이후 Phase5 시각화/batch → Phase6 controlled corruption → Phase7 optional decision 순서.
    자세한 기준은 원문과 `docs/phase1-analysis.md` 참조.
 
@@ -200,6 +243,12 @@ Phase1~2에서 발견한 코드 오류는 수정했다. 남은 제약:
 - cache hit은 기존 device/dependency provenance를 보존하며 환경 변화만으로 재추론하지 않는다.
   모델/전처리 의미를 변경하면 preprocessing ID 또는 package version도 바꿔야 한다.
 - CLI top-k는 raw 확률 요약이며 foreign event/품질 판정이 아니다.
+- mapping의 supported는 alias/class column 연결 성공이다. 검출 여부나 품질 점수가 아니다.
+- `reference_status=planned`도 실제 영상의 정답을 뜻하지 않는다. 이 archive의 ambiguous43개를
+  그대로 정답으로 간주하지 않는다. merged child 시간은 parent와 합집합으로 만들지 않았다.
+- 공식 ontology revision은 `d417d32bf59c711abb5910fd2f76a0eb44697991`, 원본 SHA256은
+  `9c685f4403eecc3ca9be37fd7285cf212feaaea6ff7229d3e7ca89e0d1f2d15d`다.
+  ID 기준으로 416개가 겹치고 31개는 누락, 표시명11개 차이. 원본 두 자료를 수정하지 않았다.
 
 ## 9. 재개 명령
 
@@ -208,6 +257,7 @@ cd C:\multitrack-audio-filtering
 git status --short
 git log -6 --oneline
 .venv/Scripts/python.exe -m waves_sed inspect outputs/predictions/metro.npz
+.venv/Scripts/python.exe -m waves_sed adapt-waves --frozen-finals C:/WAVES/data/frozen_pass2/frozen_finals.json --frozen-reports C:/WAVES/data/frozen_pass2/frozen_reports.json --mappings configs/source_mappings.example.json --output outputs/phase3/frozen-stems.json
 .venv/Scripts/python.exe -m pytest -q
 .venv/Scripts/ruff.exe check src tests scripts
 .venv/Scripts/ruff.exe format --check src tests scripts
