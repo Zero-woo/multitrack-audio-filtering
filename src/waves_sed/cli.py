@@ -104,9 +104,17 @@ def main(argv: list[str] | None = None) -> int:
     inspect = commands.add_parser("inspect", help="Read raw cache without torch or checkpoint")
     inspect.add_argument("prediction", type=Path)
     inspect.add_argument("--csv", type=Path)
+    # All Phase 3 modules are NumPy/stdlib only; model imports remain inference-only.
+    from waves_sed.phase3 import add_commands
+
+    add_commands(commands)
     args = parser.parse_args(argv)
     started = perf_counter()
     try:
+        if args.command in {"adapt-waves", "map-source"}:
+            from waves_sed.phase3 import run
+
+            return run(args)
         if args.command == "download":
             path = download_checkpoint(args.checkpoint)
             print(json.dumps({"checkpoint": str(path.resolve()), "sha256": sha256(path)}))

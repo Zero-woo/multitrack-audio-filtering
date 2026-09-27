@@ -1,0 +1,362 @@
+[
+  {
+    "key": "fb5k_1229",
+    "title": "A video game character fires a weapon and then runs across a grassy field while being shot at.",
+    "candidates": [
+      {
+        "candidate_id": "fb5k_1229__01",
+        "label": "weapon fire",
+        "description": "The player character fires the shouldered gun before beginning to run.",
+        "role": "onset",
+        "activity_intervals": [
+          [
+            1.88,
+            2.12
+          ]
+        ],
+        "attempts": [
+          {
+            "attempt": 1,
+            "audio_id": "fb5k_1229/01/a1"
+          },
+          {
+            "attempt": 2,
+            "audio_id": "fb5k_1229/01/a2"
+          },
+          {
+            "attempt": 3,
+            "audio_id": "fb5k_1229/01/a3"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "key": "fb5k_1354",
+    "title": "A wizard appears, laughs, and casts a spell on an SCP guard, who transforms his arm into a gun and shoots, turning the wizard into a cat that meows.",
+    "candidates": [
+      {
+        "candidate_id": "fb5k_1354__02",
+        "label": "wizard laugh",
+        "description": "Wizard produces a repeated laugh while gesturing toward the guard.",
+        "role": "span",
+        "activity_intervals": [
+          [
+            2.2,
+            4.35
+          ]
+        ],
+        "attempts": [
+          {
+            "attempt": 1,
+            "audio_id": "fb5k_1354/02/a1"
+          },
+          {
+            "attempt": 2,
+            "audio_id": "fb5k_1354/02/a2"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "key": "fb5k_3156",
+    "title": "A cat meows while walking along a fence, followed by the sounds of a woman chopping carrots.",
+    "candidates": [
+      {
+        "candidate_id": "fb5k_3156__02",
+        "label": "cat paw contacts",
+        "description": "Light foot-contact sounds as the cat moves along the fence area.",
+        "role": "onset",
+        "activity_intervals": [
+          [
+            0.0,
+            0.04
+          ],
+          [
+            0.16,
+            0.22
+          ]
+        ],
+        "attempts": [
+          {
+            "attempt": 1,
+            "audio_id": "fb5k_3156/02/a1"
+          },
+          {
+            "attempt": 2,
+            "audio_id": "fb5k_3156/02/a2"
+          }
+        ]
+      },
+      {
+        "candidate_id": "fb5k_3156__03",
+        "label": "cleaver chopping",
+        "description": "Repeated cleaver strikes as the woman chops food at the table.",
+        "role": "onset",
+        "activity_intervals": [
+          [
+            1.72,
+            1.8
+          ],
+          [
+            2.96,
+            3.23
+          ],
+          [
+            3.65,
+            3.96
+          ],
+          [
+            4.37,
+            4.51
+          ],
+          [
+            5.34,
+            5.5
+          ],
+          [
+            5.69,
+            5.75
+          ],
+          [
+            6.55,
+            6.79
+          ],
+          [
+            7.75,
+            8.03
+          ],
+          [
+            8.16,
+            8.22
+          ],
+          [
+            8.6,
+            8.71
+          ],
+          [
+            8.94,
+            9.18
+          ],
+          [
+            9.38,
+            9.7
+          ],
+          [
+            9.94,
+            10.0
+          ]
+        ],
+        "attempts": [
+          {
+            "attempt": 1,
+            "audio_id": "fb5k_3156/03/a1"
+          },
+          {
+            "attempt": 2,
+            "audio_id": "fb5k_3156/03/a2"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "key": "legacy_16",
+    "title": "Hatchet chopping a fallen banana-tree trunk",
+    "candidates": [
+      {
+        "candidate_id": "legacy_16__01",
+        "label": "Hand-tool impacts on wood",
+        "description": "Repeated sharp chopping impacts as the worker swings a hand tool into the fallen trunk; close transients may include the immediate contact and rebound of a single chopping motion.",
+        "role": "onset",
+        "activity_intervals": [
+          [
+            0.674,
+            0.734
+          ],
+          [
+            0.989,
+            1.049
+          ],
+          [
+            1.917,
+            1.977
+          ],
+          [
+            2.039,
+            2.099
+          ],
+          [
+            2.13,
+            2.19
+          ],
+          [
+            3.394,
+            3.454
+          ],
+          [
+            3.527,
+            3.587
+          ],
+          [
+            3.602,
+            3.662
+          ],
+          [
+            3.767,
+            3.827
+          ],
+          [
+            3.927,
+            3.987
+          ],
+          [
+            4.082,
+            4.142
+          ],
+          [
+            4.13,
+            4.19
+          ],
+          [
+            4.253,
+            4.313
+          ],
+          [
+            4.381,
+            4.441
+          ],
+          [
+            4.455,
+            4.515
+          ],
+          [
+            4.573,
+            4.633
+          ],
+          [
+            5.026,
+            5.086
+          ],
+          [
+            5.181,
+            5.241
+          ],
+          [
+            5.298,
+            5.358
+          ],
+          [
+            5.399,
+            5.459
+          ],
+          [
+            5.623,
+            5.683
+          ],
+          [
+            5.719,
+            5.779
+          ],
+          [
+            5.853,
+            5.913
+          ],
+          [
+            6.023,
+            6.083
+          ],
+          [
+            6.098,
+            6.158
+          ],
+          [
+            7.053,
+            7.113
+          ],
+          [
+            8.045,
+            8.105
+          ],
+          [
+            9.469,
+            9.529
+          ],
+          [
+            9.773,
+            9.833
+          ],
+          [
+            9.863,
+            9.923
+          ]
+        ],
+        "attempts": [
+          {
+            "attempt": 1,
+            "audio_id": "legacy_16/01/a1"
+          },
+          {
+            "attempt": 2,
+            "audio_id": "legacy_16/01/a2"
+          },
+          {
+            "attempt": 3,
+            "audio_id": "legacy_16/01/a3"
+          }
+        ]
+      },
+      {
+        "candidate_id": "legacy_16__02",
+        "label": "Tool, trunk, and plant-debris handling",
+        "description": "Quieter scraping, shifting, and rustling while the worker adjusts the tool or material between strikes.",
+        "role": "span",
+        "activity_intervals": [
+          [
+            0.2,
+            0.64
+          ],
+          [
+            1.1,
+            1.82
+          ],
+          [
+            2.24,
+            3.32
+          ],
+          [
+            4.66,
+            5.0
+          ],
+          [
+            6.2,
+            7.0
+          ],
+          [
+            7.16,
+            8.0
+          ],
+          [
+            8.15,
+            9.4
+          ]
+        ],
+        "attempts": [
+          {
+            "attempt": 1,
+            "audio_id": "legacy_16/02/a1"
+          },
+          {
+            "attempt": 2,
+            "audio_id": "legacy_16/02/a2"
+          },
+          {
+            "attempt": 3,
+            "audio_id": "legacy_16/02/a3"
+          }
+        ]
+      }
+    ]
+  }
+]

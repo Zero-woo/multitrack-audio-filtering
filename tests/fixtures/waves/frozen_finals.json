@@ -1,0 +1,132 @@
+[
+  {
+    "key": "fb5k_1229",
+    "candidate_decisions": [
+      {
+        "candidate_id": "fb5k_1229__01",
+        "action": "keep",
+        "selected_attempt": 1,
+        "final_label": "player weapon fire",
+        "final_role": "onset",
+        "merge_into_candidate_id": null,
+        "causal_family_id": "player_weapon_fire",
+        "confidence": 0.99,
+        "reason": "Attempt 1 is the only semantic-valid weapon-fire output and strongly captures the visually supported firing burst. Its overlap with selected footsteps attempt 2 is low and asymmetric, so the causally distinct stems remain separate."
+      }
+    ],
+    "final_stems": [
+      {
+        "candidate_id": "fb5k_1229__01",
+        "selected_attempt": 1,
+        "final_label": "player weapon fire",
+        "final_role": "onset",
+        "merged_candidate_ids": []
+      }
+    ],
+    "clip_summary": "Retain the player's initial weapon burst and the subsequent running footsteps as two distinct clean training targets; discard the failed incoming-gunfire extraction."
+  },
+  {
+    "key": "fb5k_1354",
+    "candidate_decisions": [
+      {
+        "candidate_id": "fb5k_1354__02",
+        "action": "keep",
+        "selected_attempt": 2,
+        "final_label": "wizard laugh",
+        "final_role": "span",
+        "merge_into_candidate_id": null,
+        "causal_family_id": "wizard_laughter",
+        "confidence": 0.98,
+        "reason": "Strong semantic evidence supports the requested repeated laugh. Attempt 2 passes the semantic gate and is cleaner than attempt 1: it has effectively zero shared leakage with the valid foreground-effect attempts. High one-way containment involving invalid broad attempts from candidates 04 or 06 indicates contamination in those broad siblings, not duplication of this clean laugh stem."
+      }
+    ],
+    "final_stems": [
+      {
+        "candidate_id": "fb5k_1354__02",
+        "selected_attempt": 2,
+        "final_label": "wizard laugh",
+        "final_role": "span",
+        "merged_candidate_ids": []
+      }
+    ],
+    "clip_summary": "Retain only the clean repeated wizard laugh. The remaining effects candidates collapse into a highly duplicated broad action-effects signal spanning several causally distinct visual events, so they are unsuitable as captionable source targets."
+  },
+  {
+    "key": "fb5k_3156",
+    "candidate_decisions": [
+      {
+        "candidate_id": "fb5k_3156__02",
+        "action": "merge_into",
+        "selected_attempt": null,
+        "final_label": null,
+        "final_role": null,
+        "merge_into_candidate_id": "fb5k_3156__03",
+        "causal_family_id": "food_chopping_impacts",
+        "confidence": 0.97,
+        "reason": "Although both attempts pass the automated semantic gate, their energy occurs during the late chopping section rather than the opening cat shot, and both are effectively duplicates of cleaver chopping: attempt 2 versus candidate 03 attempt 1 has waveform correlation 0.9468, envelope correlation 0.9988, and approximately 0.99 mutual TF coverage. The useful audio is therefore relabeled through a merge instead of being retained falsely as cat paw contacts."
+      },
+      {
+        "candidate_id": "fb5k_3156__03",
+        "action": "keep",
+        "selected_attempt": 1,
+        "final_label": "repeated cleaver chopping food",
+        "final_role": "onset",
+        "merge_into_candidate_id": null,
+        "causal_family_id": "food_chopping_impacts",
+        "confidence": 0.99,
+        "reason": "Attempt 1 passes the semantic gate, has strong precision, recall, and faithfulness scores, and cleanly isolates sparse repeated impacts matching the visible chopping action. Attempt 2 is an overly broad, nearly continuous extraction and fails the semantic gate."
+      }
+    ],
+    "final_stems": [
+      {
+        "candidate_id": "fb5k_3156__03",
+        "selected_attempt": 1,
+        "final_label": "repeated cleaver chopping food",
+        "final_role": "onset",
+        "merged_candidate_ids": [
+          "fb5k_3156__02"
+        ]
+      }
+    ],
+    "clip_summary": "One clean captionable stem remains: sparse repeated cleaver chopping. No valid cat-meow extraction exists, and the nominal cat-paw output is actually a duplicate of the chopping family."
+  },
+  {
+    "key": "legacy_16",
+    "candidate_decisions": [
+      {
+        "candidate_id": "legacy_16__01",
+        "action": "merge_into",
+        "selected_attempt": null,
+        "final_label": null,
+        "final_role": null,
+        "merge_into_candidate_id": "legacy_16__02",
+        "causal_family_id": "hand_tool_wood_impacts",
+        "confidence": 0.97,
+        "reason": "All signal-valid attempts are near-duplicates of candidate 02 attempts 2/3. Candidate 02 attempt 2 is the cleaner representative by the SAM judgments, so this candidate is merged without summing WAVs."
+      },
+      {
+        "candidate_id": "legacy_16__02",
+        "action": "keep",
+        "selected_attempt": 2,
+        "final_label": "Repeated hand-tool chopping impacts on wood",
+        "final_role": "onset",
+        "merge_into_candidate_id": null,
+        "causal_family_id": "hand_tool_wood_impacts",
+        "confidence": 0.96,
+        "reason": "Attempt 2 does not contain the planned quiet handling span; it contains the repeated chopping transients. It has the strongest precision, faithfulness, and overall judgment among the duplicate impact outputs and is retained with an accurate onset caption."
+      }
+    ],
+    "final_stems": [
+      {
+        "candidate_id": "legacy_16__02",
+        "selected_attempt": 2,
+        "final_label": "Repeated hand-tool chopping impacts on wood",
+        "final_role": "onset",
+        "merged_candidate_ids": [
+          "legacy_16__01"
+        ]
+      }
+    ],
+    "clip_summary": "Two clean, captionable families remain: repeated chopping impacts represented by candidate 02 attempt 2, and a separate quiet outdoor ambience represented by candidate 03 attempt 1."
+  }
+]
