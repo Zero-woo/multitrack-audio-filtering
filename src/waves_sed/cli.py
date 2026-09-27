@@ -108,9 +108,16 @@ def main(argv: list[str] | None = None) -> int:
     from waves_sed.phase3 import add_commands
 
     add_commands(commands)
+    from waves_sed.phase4 import add_commands as add_evaluation_commands
+
+    add_evaluation_commands(commands)
     args = parser.parse_args(argv)
     started = perf_counter()
     try:
+        if args.command == "evaluate":
+            from waves_sed.phase4 import run
+
+            return run(args)
         if args.command in {"adapt-waves", "map-source"}:
             from waves_sed.phase3 import run
 
