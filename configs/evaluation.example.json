@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "event": {
+    "threshold": 0.5,
+    "median_window_frames": 1,
+    "min_duration_seconds": 0.0
+  },
+  "onset_tolerance_seconds": 0.2,
+  "allow_ambiguous_reference": false,
+  "outside_family_threshold": 0.5,
+  "outside_family_top_k": 5
+}
