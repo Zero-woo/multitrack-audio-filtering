@@ -111,9 +111,16 @@ def main(argv: list[str] | None = None) -> int:
     from waves_sed.phase4 import add_commands as add_evaluation_commands
 
     add_evaluation_commands(commands)
+    from waves_sed.phase5 import add_commands as add_phase5_commands
+
+    add_phase5_commands(commands)
     args = parser.parse_args(argv)
     started = perf_counter()
     try:
+        if args.command in {"batch-infer", "visualize"}:
+            from waves_sed.phase5 import run
+
+            return run(args)
         if args.command == "evaluate":
             from waves_sed.phase4 import run
 
