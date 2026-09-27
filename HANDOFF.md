@@ -1,19 +1,19 @@
 # 다음 Codex 세션 인수인계
 
-최종 갱신: 2026-09-27. **Phase 1~3: 구조 분석, frozen ATST-F 추론,
-WAVES metadata adapter와 명시적 AudioSet mapping을 완료했다.**
-중간 중단 후 재개하여 전체 테스트·실제 frozen 자료 변환·패키지 검증과 커밋까지 진행했다.
-다음 단계는 Phase 4의 TemporalReference, event extraction, 역할별 metric/report다.
+최종 갱신: 2026-09-27. **Phase 1~4: frozen ATST-F 추론, metadata/mapping,
+TemporalReference, event extraction, 역할별 metric과 JSON/CSV report를 완료했다.**
+토큰 소진 후 저장된 변경을 이어 받아 구현·회귀 테스트·실제 cache 재평가·wheel 검증을 마무리했다.
+다음 단계는 Phase 5의 시각화와 batch inference다. 현재 cache 모음을 평가·집계하는 CLI는 이미 있다.
 
 ## 1. 다음 세션에서 가장 먼저 확인할 것
 
 1. `git status --short`, `git log -6 --oneline`과 이 문서를 읽는다.
 2. `docs/phase1-analysis.md`에서 실제 WAVES 필드·merge/role 변경 문제를 확인한다.
-3. `docs/phase3-validation.md`에서 현재 API, 실제 ontology와 모델 vocabulary 차이,
-   시간 기준 상태와 검증 범위를 확인한다. 추론 기록은 `docs/phase2-validation.md`다.
+3. `docs/phase4-validation.md`에서 metric 단위/빈값/집계/해시 검증과 실행 방법을 확인한다.
+   `docs/phase3-validation.md`는 metadata/ontology 계약, `docs/phase2-validation.md`는 추론 기록이다.
 4. `C:\WAVES`에 실제 run/WAV가 추가되었는지 확인한다. 현재 checkout에는 WAV가 없다.
-5. 새 사용자 지시를 확인한다. Phase 4에서는 `reference_status=ambiguous`인 planned support를
-   확정된 기준처럼 사용하지 않는다. 실제 WAV가 없을 때 `audio_id`로 파일명을 만들지 않는다.
+5. 새 사용자 지시를 확인한다. `reference_status=ambiguous`는 기본 평가 제외이며 설정 opt-in이
+   필요하다. 실제 WAV가 없을 때 `audio_id`로 파일명을 만들지 않는다.
 
 ## 2. 요청과 작업 범위
 
@@ -25,7 +25,7 @@ WAVES metadata adapter와 명시적 AudioSet mapping을 완료했다.**
 - 전체 목표는 독립 pretrained SED로 WAVES stem의 의미·시간 일관성을 측정하는 후처리 도구다.
   생성 모델 수정, 학습/fine-tuning, reference WAV 유사도 비교는 하지 않는다.
 - 먼저 구조를 분석·설명하고 최소 단일-WAV prototype을 검증하라는 요청에 따라 Phase 1~2를 진행했다.
-- 이어서 사용자가 다음 단계를 요청하여 Phase 3을 구현했다. Phase 4~7은 아직 구현하지 않았다.
+- 이어서 사용자가 다음 단계를 요청하여 Phase 3~4를 구현했다. Phase 5~7은 아직 구현하지 않았다.
 - WAVES planned support는 영상의 정답 시간이 아니다. 내부 consistency와 영상 동기화는 구분한다.
 - 사용자 요청대로 의미 있는 작업 단위마다 로컬 commit을 남겼다. Push는 하지 않았다.
 
@@ -54,8 +54,17 @@ WAVES metadata adapter와 명시적 AudioSet mapping을 완료했다.**
 - JSON 수동 mapping, 정확한 alias, 선택적 descendant 확장, unsupported 상태와 ID 기반 target max.
 - `adapt-waves`와 `map-source` CLI. 모델이나 새 의존성 없이 동작하고 원본 파일을 보호한다.
 
-**미구현 후속 기능:** TemporalReference, event extraction, 역할별 metric, 집계 report/시각화/batch,
-controlled corruption, PASS/REVIEW/FAIL 정책. 이들을 구현 완료로 취급하지 않는다.
+- 설정 기반 median smoothing/threshold/최소 길이 event extraction. Raw cache는 변경하지 않는다.
+- WavesPlannedReference와 ExternalVideoReference Protocol, ambiguous opt-in/누락/모순 상태 처리.
+- Onset 최적 matching, span 합집합 IoU/coverage, ambience 시간 가중 raw confidence.
+- 실제 audio hash 또는 명시적 final manifest hash로 cache identity 확인. 전체 관측 timeline 검사.
+- Outside-family top-k와 ancestor/descendant/unknown hierarchy 표시, 명시적 foreign evidence.
+- `evaluate` CLI로 기존 cache 모음의 stem/clip/dataset JSON과 CSV를 저장한다.
+  미지원/누락은 null, 기여 수가 있는 역할별 평균과 onset pooled count를 제공한다.
+- 입력 및 원본 media/hardlink 보호, 추론 없는 재평가, NumPy만 있는 wheel 환경 검증.
+
+**미구현 후속 기능:** 시각화, batch inference, controlled corruption, PASS/REVIEW/FAIL 정책.
+이미 있는 cache 모음 평가와 batch inference를 혼동하지 않는다.
 
 ## 4. 파일별 구현/변경 내용
 
@@ -110,6 +119,25 @@ Phase 3 추가 파일과 변경 내용:
 
 README/THIRD_PARTY_NOTICES/HANDOFF도 Phase 3 상태로 갱신했다. 새 dependency는 없다.
 
+Phase 4 추가/수정 파일:
+
+| 파일 | 구현/변경 |
+| --- | --- |
+| `src/waves_sed/evaluation_config.py`, `configs/evaluation.example.json` | 엄격한 설정 schema, uncalibrated event/tolerance/evidence 기본값 |
+| `src/waves_sed/events.py` | 확률 median smoothing, 실제 gap 분리, threshold와 실제 길이 필터 |
+| `src/waves_sed/temporal_reference.py` | provider Protocol, Waves 계획 사용 정책, typed support/provenance 검증 |
+| `src/waves_sed/temporal_metrics.py` | 구간 합집합/교집합, 최적 onset DP, span/ambience metric |
+| `src/waves_sed/evaluation.py` | cache identity와 전체 관측 범위, role dispatch, semantic evidence, null 상태/provenance |
+| `src/waves_sed/metadata.py` | `from_dict`/`load_stems`, Phase 3 manifest 검증/상대 경로 해석 |
+| `src/waves_sed/phase4.py`, `src/waves_sed/cli.py` | evaluate CLI, 명시적 stem ID→NPZ index, 입력/원본 보호 |
+| `src/waves_sed/reporting.py` | 역할별 평균/분모, pooled count, context 혼합 방지, hashed 파일명, atomic JSON/CSV |
+| `tests/test_evaluation_config.py`, `test_events.py`, `test_temporal_reference.py`, `test_temporal_metrics.py` | 타입/경계/gap/모호함/최적 matching/부분 frame/empty 정책 회귀 |
+| `tests/test_evaluation.py`, `test_phase4_cli.py`, `test_reporting.py` | 해시/누락/재평가/aggregate/source 보호/추론 import 차단 |
+| `scripts/verify_cached_evaluation.py` | 실제 cache를 두 threshold로 재평가, synthetic 전체 길이 reference임을 명시 |
+| `docs/phase4-validation.md`, `README.md`, `HANDOFF.md` | 실행법, metric 단위/한계/최종 검증/다음 작업 |
+
+Phase 4도 새 dependency를 추가하지 않았다. 기본 NumPy 외에 scipy나 inference library는 필요 없다.
+
 Vendor 루트: `src/waves_sed/_vendor/pretrained_sed/`.
 
 | 파일 | 내용 |
@@ -149,6 +177,7 @@ Resources 루트: `src/waves_sed/resources/`.
 - 실제 checkpoint 통합 테스트 포함 실행: **79 passed**, 11.06초 (CSV regression3개 추가 이전).
 - Phase 2 최종 오프라인 실행: **81 passed, 1 skipped**, 17.09초.
 - Phase 3 최종 전체 실행: **226 passed, 1 skipped**, 9.83초. skip은 환경변수 없는 실제 모델 test다.
+- Phase 4 최종 전체 실행: **515 passed, 1 skipped**, 13.69초. Ruff lint/format 및 wheel build 통과.
 - audioread의 Python3.11 `aifc/audioop/sunau` deprecation warning3개만 있다.
 - Ruff check/format check, dependency check, CPU requirements dry-run, wheel build 통과.
 - Phase 3 최종 코드로 wheel을 빌드했다. 별도 `.cache/phase3-package-smoke` 환경에 wheel과
@@ -164,6 +193,18 @@ Phase 3 실제 자료 검증:
 
 이 입력은 WAVES stem이 아니라 upstream 공개 예제다. 이 검증은 추론 경로의 정확성 확인이며
 SED의 실제 인식 성능이나 filter 품질을 입증하지 않는다.
+
+Phase 4 실제 자료 검증:
+- `outputs/phase4/frozen-reports/dataset.json`: 29 clips / 62 stems, 모두 unavailable.
+  실제 cache가 없는 빈 index이므로 missing_prediction 62, unsupported_mapping 60,
+  ambiguous_reference 43이다. metric/null과 기여 수 0으로 남으며 실패 event를 만들지 않는다.
+- `outputs/phase4/metro-demo/threshold-0.2/`, `threshold-0.5/`: 실제 metro NPZ 938 frames를
+  /m/0195fx (Subway, metro, underground)에 연결했다. 각 threshold에서 1개 / 0개 event 검출.
+  원본 cache hash 불변, inference_performed=false.
+- 이 demo의 전체 길이 support는 synthetic fixture이며 WAVES 계획/영상 annotation이 아니다.
+  `origin=synthetic_full_track_demonstration`을 명시한다. 여기서의 IoU는 성능 점수가 아니다.
+- `.cache/phase4-package-smoke`: wheel과 NumPy 1.26.4만 설치. 추론 라이브러리 부재 확인 후
+  같은 cache API와 frozen CLI를 실행했다. 결과는 outputs/phase4/wheel-*에 있다.
 
 ## 6. 환경과 Git
 
@@ -181,7 +222,10 @@ Git commit:
 - `bc10e83`: Phase 2 사용/검증/인수인계 문서
 - `f47c66c`: 공식 ontology와 명시적 source mapping
 - `fe25584`: WAVES adapter와 offline mapping CLI
-- Phase 3 문서 commit은 그 다음에 남긴다. 정확한 최신 hash는 `git log`를 확인한다.
+- `048c327`: Phase 3 검증/시간 기준 한계 문서
+- `3524817`: temporal reference/event extraction/역할별 metric
+- `73876f7`: cache 검증 evaluator와 JSON/CSV report/CLI
+- Phase 4 문서 commit이 그 뒤에 있다. 정확한 최신 hash는 `git log`를 확인한다.
 
 로컬 Git 제외 자산:
 - `.cache/PretrainedSED`: 공식 repository clone, revision
@@ -199,24 +243,28 @@ Git commit:
 
 ## 7. 미해결 제약과 다음 작업 순서
 
-Phase 1~3에서 발견한 코드 오류는 수정했다. 남은 제약:
+Phase 1~4에서 발견한 코드 오류는 수정했다. 남은 제약:
 - 실제 WAVES WAV 없음. 향후 실제 stem 검증은 materialized run 또는 명시적인 경로 매핑이 필요.
 - CUDA/Linux/다른 Python 버전 실행은 미검증.
-- Phase 4~7 기능은 아직 미구현. 현재 PASS/FAIL을 내리지 않음.
+- Phase 5~7 기능은 아직 미구현. 현재 PASS/FAIL을 내리지 않음.
 - 공식 ontology에 없는 31개 모델 ID는 hierarchy가 알려져 있지 않음. 직접 mapping은 가능하나 descendant 확장 금지.
-- WAVES planned support의 ambiguous 상태를 평가에 사용할 정책은 Phase 4에서 명시해야 함.
+- 실제 reference annotation이나 threshold calibration은 없음. WAVES 계획만으로 영상 동기화를 입증하지 못함.
+- Report 각 파일은 atomic replace지만 여러 파일 전체를 한 transaction으로 쓰는 것은 아님.
+  재실행에서 남은 옛 파일은 지우지 않으므로 현재 dataset.json의 index만 사용해야 함.
 
 후속 순서:
 1. 사용자가 새로 요청하는 범위와 현재 Git 상태 확인.
-2. TemporalReference interface와 WavesPlannedReference를 만들고 향후 ExternalVideoReference 경계를 둔다.
-   ambiguous/missing support를 자동으로 신뢰하지 않는 명시적인 정책을 정한다.
-3. 기존 raw cache와 명시적 mapping의 target curve를 받아 event threshold/median smoothing/
-   minimum duration을 config로 둔 event extraction을 구현한다. 추론을 재실행하지 않는다.
-4. 역할별 metric: onset의 tolerance 제한 최적 일대일 matching, span의 구간 집합 IoU/coverage,
-   ambience의 occupancy/confidence. Synthetic interval로 missing/extra/timing과 경계조건을 검증한다.
-5. stem/clip/dataset JSON/CSV report를 구현한다. cache가 실제 stem과 일치하는지 입력 hash도 확인한다.
-   mapping/metadata 부족과 실제 event 부재를 구분한다. 아직 calibration되지 않은 PASS/FAIL을 강제하지 않는다.
-6. 이후 Phase5 시각화/batch → Phase6 controlled corruption → Phase7 optional decision 순서.
+2. Phase 5 시각화: 원본 waveform 또는 log-mel, expected 구간, raw/선택적 smoothed target curve,
+   detected 구간을 같은 초 단위 축에 표시한다. 모호한 reference/누락 상태를 그림에도 명시한다.
+3. Export 가능한 그림/HTML 형식과 최소 plotting 의존성을 결정하고 optional extra로 분리한다.
+   원본 audio가 없거나 mapping이 미지원이면 파형/확률을 임의로 만들지 않는다.
+4. Batch inference: normalized manifest의 실제 audio_path만 사용하고 backend를 한 번 로드한다.
+   기존 cache의 input/model hash 재사용 정책, stem별 실패 기록, 명시적인 cache index 생성을 연결한다.
+5. 기존 `evaluate`/`write_reports`를 재사용하여 batch 결과를 계산한다. Windows 파일명에는
+   stem_id의 ::를 쓰지 않고 기존 SHA256 파일명 정책을 활용한다. 원본 덮어쓰기 방지를 유지한다.
+6. 실제 WAVES run이 추가되면 소수 stem으로 end-to-end 검증한다. 없으면 실제 공개 cache와
+   명확히 synthetic인 metadata만으로 구현 경로를 확인하고 성능 검증과 구분한다.
+7. 이후 Phase6 controlled corruption → Phase7 optional decision 순서.
    자세한 기준은 원문과 `docs/phase1-analysis.md` 참조.
 
 ## 8. 중요한 코드 구조와 주의사항
@@ -243,6 +291,16 @@ Phase 1~3에서 발견한 코드 오류는 수정했다. 남은 제약:
 - cache hit은 기존 device/dependency provenance를 보존하며 환경 변화만으로 재추론하지 않는다.
   모델/전처리 의미를 변경하면 preprocessing ID 또는 package version도 바꿔야 한다.
 - CLI top-k는 raw 확률 요약이며 foreign event/품질 판정이 아니다.
+- `evaluation.py`는 추론 모듈을 import하지 않는다. config, reference, cache, mapping을 검증하고
+  role별 metric 함수를 호출한다. Raw target 확률/NPZ는 event extraction과 분리되어 있다.
+- Onset 오차 통계는 절대 ms, span onset/offset은 signed 초이며 여러 구간의 외곽 경계다.
+  out_of_window_activation/activity는 초다. Ratio의 0분모와 대응 없는 오차는 null이다.
+- WAVES empty/null 계획은 unavailable이다. 외부 provider의 명시적 빈 annotation은 API에서 허용한다.
+- `planned`인데 relabel/role 변경/merge 신호가 있으면 inconsistent_reference_status로 거부한다.
+- 파일이 없을 때 명시적인 raw_final_stem.sha256으로 cache를 연결할 수 있지만 source_file_verified=false다.
+  실제 파일 bytes를 읽어 검증한 verified_current_audio와 구분한다.
+- Report 집계는 evaluated 행만 사용하고 설정/모델/mapping hash/reference origin 혼합을 거부한다.
+  missing cache의 요청 경로는 provenance.prediction_request에 남긴다.
 - mapping의 supported는 alias/class column 연결 성공이다. 검출 여부나 품질 점수가 아니다.
 - `reference_status=planned`도 실제 영상의 정답을 뜻하지 않는다. 이 archive의 ambiguous43개를
   그대로 정답으로 간주하지 않는다. merged child 시간은 parent와 합집합으로 만들지 않았다.
@@ -258,6 +316,8 @@ git status --short
 git log -6 --oneline
 .venv/Scripts/python.exe -m waves_sed inspect outputs/predictions/metro.npz
 .venv/Scripts/python.exe -m waves_sed adapt-waves --frozen-finals C:/WAVES/data/frozen_pass2/frozen_finals.json --frozen-reports C:/WAVES/data/frozen_pass2/frozen_reports.json --mappings configs/source_mappings.example.json --output outputs/phase3/frozen-stems.json
+.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/phase3/frozen-stems.json --predictions outputs/phase4/frozen-prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/phase4/frozen-reports
+.venv/Scripts/python.exe scripts/verify_cached_evaluation.py --prediction outputs/predictions/metro.npz --audio .cache/PretrainedSED/test_files/752547__iscence__milan_metro_coming_in_station.wav --class-id /m/0195fx --output-dir outputs/phase4/metro-demo
 .venv/Scripts/python.exe -m pytest -q
 .venv/Scripts/ruff.exe check src tests scripts
 .venv/Scripts/ruff.exe format --check src tests scripts

@@ -3,13 +3,42 @@
 WAVES가 생성한 stem을 frozen AudioSet-Strong SED 모델로 검사하는 독립적인 후처리 프로젝트입니다.
 WAVES 생성 파이프라인을 수정하거나 모델을 학습하지 않습니다.
 
-현재 **Phase 1~3: 구조 분석, 단일 WAV 추론, WAVES metadata adapter와 명시적 mapping**을 구현했습니다.
+현재 **Phase 1~4: frozen 추론, WAVES metadata/mapping, 이벤트 추출과 역할별 metric/report**를 구현했습니다.
 WAVES의 planned support와 SED 출력 비교는 내부 consistency 검사이며,
 실제 영상과의 동기화를 입증하지 않습니다.
 
 구조 분석, 확인된 metadata 누락, 단계별 계획은 [분석 문서](docs/phase1-analysis.md),
 추론 검증은 [Phase 2 검증 기록](docs/phase2-validation.md),
-metadata/mapping 사용법은 [Phase 3 문서](docs/phase3-validation.md)에 있습니다.
+metadata/mapping 사용법은 [Phase 3 문서](docs/phase3-validation.md),
+cache 기반 평가와 측정 단위는 [Phase 4 문서](docs/phase4-validation.md)에 있습니다.
+
+## Cache 기반 시간 평가 (Phase 4)
+
+`adapt-waves`로 만든 metadata와 해당 stem에서 추론한 raw NPZ를 연결합니다.
+Prediction index는 `{"schema_version":1,"predictions":{"실제 stem_id":"../predictions/stem.npz"}}`
+형식이며 상대 경로는 index 파일 기준입니다. 설정을 바꿔도 추론을 다시 실행하지 않습니다.
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/phase3/stems.json --predictions outputs/phase4/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/phase4/reports
+```
+
+위 metadata/index 경로는 실제 파일로 바꿉니다. 출력은 stem/clip별 JSON, `dataset.json`,
+`stems.csv`, `clips.csv`입니다. onset은 최적 일대일 matching, span은 구간 합집합의 IoU/coverage,
+ambience는 occupancy와 시간 가중 raw confidence를 계산합니다. NumPy만으로 실행할 수 있습니다.
+
+WAVES 계획이 `ambiguous`이면 기본적으로 시간 평가에서 제외합니다. 누락된 cache/reference와
+미지원 mapping은 `unavailable` 사유와 `metrics=null`로 남깁니다. Source/cache SHA-256과 전체
+관측 시간축을 확인하며, outside-family evidence를 자동 실패로 판정하지 않습니다.
+`decision=null`이고 예제 threshold는 아직 보정되지 않았습니다.
+
+현재 저장된 실제 공개 예제 cache로 threshold 변경·report 출력을 확인하는 명령:
+
+```powershell
+.venv/Scripts/python.exe scripts/verify_cached_evaluation.py --prediction outputs/predictions/metro.npz --audio .cache/PretrainedSED/test_files/752547__iscence__milan_metro_coming_in_station.wav --class-id /m/0195fx --output-dir outputs/phase4/metro-demo
+```
+
+이 검증의 expected support는 **의도적인 전체 길이 synthetic fixture**이며 WAVES 계획이나
+영상 annotation이 아닙니다. 실제 WAVES 음원 품질 검증에는 해당 run의 WAV와 cache가 필요합니다.
 
 ## WAVES metadata와 source mapping (Phase 3)
 
@@ -90,11 +119,11 @@ from waves_sed.prediction import FramePrediction
 prediction = FramePrediction.load("outputs/predictions/stem.npz")
 print(prediction.probabilities.shape)
 print(prediction.class_ids[0], prediction.class_names[0])
-# 추후 mapping된 class column들의 max로 P_target(t)를 계산할 수 있습니다.
+# mapping된 class column들의 max로 P_target(t)를 계산합니다.
 ```
 
 공식 AudioSet ontology와 명시적 WAVES source mapping은 Phase 3에 구현했습니다.
-Event 추출, metric/report와 필터 판정은 후속 단계입니다. 447-class vocabulary와 ontology는
+Event 추출과 metric/report는 Phase 4에 구현했습니다. 필터 판정은 후속 단계입니다. 447-class vocabulary와 ontology는
 서로 다른 metadata이며, class ID로 연결합니다.
 
 ## 검증
@@ -137,8 +166,8 @@ candidate ID로 조인합니다. 특히 relabel, role 변경, merge가 있으면
 1. WAVES 산출물과 의존성 조사
 2. ATST-F Strong checkpoint 로딩, frozen inference, raw frame probability 저장
 3. WAVES metadata adapter, ontology 및 명시적 source mapping
-4. 역할별 temporal metric과 JSON/CSV report
-5. 시각화와 batch 처리
+4. 역할별 temporal metric과 JSON/CSV report (여기까지 완료)
+5. 시각화와 batch 처리 (다음 단계)
 6. controlled corruption 평가
 7. calibration 후 설정에 따른 PASS / REVIEW / FAIL 판단
 
