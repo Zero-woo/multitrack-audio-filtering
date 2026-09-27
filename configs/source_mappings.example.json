@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "mappings": {
+    "dog_barking": {
+      "descriptions": ["dog barking", "barking dog"],
+      "allowed_classes": ["/m/05tny_"],
+      "foreign_classes": ["/m/09x0r"],
+      "notes": "Explicit Bark mapping. Speech is report-only; this config makes no filter decision."
+    },
+    "repeated_chopping_impacts": {
+      "descriptions": ["repeated chopping impacts"],
+      "allowed_classes": ["/m/07pczhz", "/m/07pn_8q"],
+      "notes": "Explicit Chop and Chopping (food) family; does not automatically add all impact classes."
+    },
+    "footsteps": {
+      "descriptions": ["footsteps", "Man walking footsteps", "running footsteps on grass"],
+      "allowed_classes": ["/m/07pbtc8"],
+      "notes": "Walk, footsteps. Exact configured aliases only; other descriptions remain unsupported."
+    }
+  }
+}

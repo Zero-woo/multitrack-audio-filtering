@@ -1,0 +1,12 @@
+{
+  "source": "https://github.com/audioset/ontology",
+  "revision": "d417d32bf59c711abb5910fd2f76a0eb44697991",
+  "path": "ontology.json",
+  "sha256": "9c685f4403eecc3ca9be37fd7285cf212feaaea6ff7229d3e7ca89e0d1f2d15d",
+  "node_count": 632,
+  "license": "CC-BY-SA-4.0",
+  "license_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+  "attribution": "Audio Set Ontology, Google Inc.; Dan Ellis; README version v1 2017-03-06",
+  "license_source": "https://github.com/audioset/ontology/blob/d417d32bf59c711abb5910fd2f76a0eb44697991/README.md",
+  "transformation": "None. Exact bytes from the ontology.json Git blob at the pinned revision."
+}

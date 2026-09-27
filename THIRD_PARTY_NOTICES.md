@@ -24,3 +24,18 @@ Optional verification uses the upstream test WAV
 `752547__iscence__milan_metro_coming_in_station.wav`.
 Attribution and licensing are in the upstream `test_files/freesound_attributions.txt`.
 That WAV is not redistributed here.
+
+## AudioSet ontology
+
+The bundled `resources/audioset_ontology.json` is an unchanged copy of the official
+[Google AudioSet ontology](https://github.com/audioset/ontology), revision
+`d417d32bf59c711abb5910fd2f76a0eb44697991`, attributed to Google Inc. / Dan Ellis.
+The ontology is licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
+Its [attribution](src/waves_sed/resources/audioset_ontology.LICENSE.md) and
+[source/hash metadata](src/waves_sed/resources/audioset_ontology.provenance.json) are included.
+This data license applies to the bundled ontology, separately from the model code's MIT license.
+
+The archived ontology has 632 nodes. It covers 416 of the current model's 447 IDs;
+31 model IDs have no entry and 11 shared IDs have different display names. Neither source
+is rewritten to hide these differences. Model-only IDs can be explicitly mapped using
+their real model metadata, but their ontology relationships are unavailable.
