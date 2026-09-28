@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "mappings": {
+    "weapon_fire": {
+      "descriptions": ["player weapon fire"],
+      "allowed_classes": ["/m/032s66"],
+      "include_descendants": false,
+      "notes": "Gunshot, gunfire. Explicit firearm discharge in the final label and planned description; candidate mapping pending source-audio validation."
+    },
+    "machine_gun": {
+      "descriptions": ["Aircraft machine-gun fire"],
+      "allowed_classes": ["/m/04zjc"],
+      "include_descendants": false,
+      "notes": "Machine gun. The exact alias also covers the lowercase final label through the existing case normalization; no broader gunfire family is added."
+    },
+    "explosion": {
+      "descriptions": ["Aircraft explosion"],
+      "allowed_classes": ["/m/014zdl"],
+      "include_descendants": false,
+      "notes": "Explosion. Targets the named blast only; does not require subsequent fire or smoke sounds."
+    },
+    "thud": {
+      "descriptions": ["Woman landing with a thud", "Heavy wooden panel thumps"],
+      "allowed_classes": ["/m/07qnq_y"],
+      "include_descendants": false,
+      "notes": "Thump, thud. Both final labels explicitly name the acoustic impact; no generic impact classes are added."
+    },
+    "wizard_laughter": {
+      "descriptions": ["wizard laugh"],
+      "allowed_classes": ["/m/01j3sz"],
+      "include_descendants": false,
+      "notes": "Laughter. Candidate for the described wizard vocalization; the rendered voice and model response still require audio review. Animal or hybrid laughter labels are not included."
+    },
+    "basketball_bounce": {
+      "descriptions": ["basketball bouncing on gym floor"],
+      "allowed_classes": ["/m/018w8"],
+      "include_descendants": false,
+      "notes": "Basketball bounce. The ontology specifies bouncing on a hard surface; backboard and hoop contacts are separate unsupported descriptions."
+    },
+    "lubricant_spray": {
+      "descriptions": ["lubricant spray bursts"],
+      "allowed_classes": ["/m/07qlf79"],
+      "include_descendants": false,
+      "notes": "Spray. The planned description specifies aerosol lubricant bursts, consistent with liquid droplets. Dirt and gravel spray is not included."
+    },
+    "aircraft_engine": {
+      "descriptions": ["P-38 aircraft engine roar"],
+      "allowed_classes": ["/m/014yck"],
+      "include_descendants": false,
+      "notes": "Aircraft engine. Targets the explicitly identified aircraft engine; no jet, propeller, or generic roar class is assumed."
+    },
+    "puppy_growl": {
+      "descriptions": ["Puppy low growl"],
+      "allowed_classes": ["/m/0ghcn6"],
+      "include_descendants": false,
+      "notes": "Growling. The ontology describes low guttural animal vocalization; leaf rustling and other puppy sounds are not included."
+    },
+    "food_chopping": {
+      "descriptions": ["repeated cleaver chopping food"],
+      "allowed_classes": ["/m/07pn_8q"],
+      "include_descendants": false,
+      "notes": "Chopping (food). Explicit food cutting with a cleaver; generic Chop is not added. The existing merged-support reference ambiguity remains unchanged."
+    },
+    "crowd": {
+      "descriptions": ["Crowd ambience"],
+      "allowed_classes": ["/m/03qtwd"],
+      "include_descendants": false,
+      "notes": "Crowd. The planned description specifies audience and stadium background; no cheering, applause, or speech subclasses are presumed."
+    },
+    "mechanical_fan": {
+      "descriptions": ["Box fan running"],
+      "allowed_classes": ["/m/02x984l"],
+      "include_descendants": false,
+      "notes": "Mechanical fan. Targets operation of the fan, not placement on a tub. Existing role-change reference ambiguity remains unchanged."
+    },
+    "motorcycle_revving": {
+      "descriptions": ["Dirt bike engine revving through a forest trail", "underwater motorcycle engines revving"],
+      "allowed_classes": ["/m/07q2z82"],
+      "include_descendants": false,
+      "notes": "Accelerating, revving, vroom. Targets explicitly named engine revving only. The fictional underwater rendering has not been audio-validated; no motorcycle identity claim is made."
+    },
+    "puff": {
+      "descriptions": ["dog puffing exhalation"],
+      "allowed_classes": ["/m/07q34h3"],
+      "include_descendants": false,
+      "notes": "Puff. A short forceful air burst is explicit in the planned description; this is not an inferred panting or barking label."
+    },
+    "trailer_rattle": {
+      "descriptions": ["Trailer running-gear rattle"],
+      "allowed_classes": ["/m/07qn4z3"],
+      "include_descendants": false,
+      "notes": "Rattle. Targets the named mechanical rattling; does not require other vehicle or tire sounds."
+    },
+    "swing_whoosh": {
+      "descriptions": ["Soft lightsaber swing whooshes"],
+      "allowed_classes": ["/m/07rqsjt"],
+      "include_descendants": false,
+      "notes": "Whoosh, swoosh, swish. Targets explicitly described airy swing motion; synthetic rendering still requires audio validation, and blade clashes are not included."
+    },
+    "footsteps": {
+      "descriptions": ["Man walking footsteps", "running footsteps on grass"],
+      "allowed_classes": ["/m/07pbtc8"],
+      "include_descendants": false,
+      "notes": "Walk, footsteps. Retains the two exact frozen aliases already present in the example mapping; combined shoe squeaks and footfalls are not included."
+    },
+    "vehicle_engine": {
+      "descriptions": ["Vehicle engine hum", "Tractor engine"],
+      "allowed_classes": ["/m/02mk9"],
+      "include_descendants": false,
+      "notes": "Engine. Both descriptions explicitly identify an engine. This broad source class does not verify a particular engine type or hum timbre, and no descendants are added."
+    }
+  }
+}
