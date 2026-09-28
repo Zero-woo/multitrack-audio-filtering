@@ -1,15 +1,17 @@
 # 다음 Codex 세션 인수인계
 
-최종 갱신: 2026-09-28. **Phase 1~6: frozen 추론, metadata/mapping, 역할별 평가,
-batch/시각화와 controlled corruption evaluation을 완료했다.**
-토큰 소진 후 저장된 변경을 이어 받아 Phase 6 파형 생성·paired report·실제 9개 추론과 검증을 마무리했다.
-다음 단계는 Phase 7의 설정 기반 품질 판정 정책이다. 현재 `decision=null`이다.
+최종 갱신: 2026-09-29. **Phase 1~7: frozen 추론, metadata/mapping, 역할별 평가,
+batch/시각화, controlled corruption과 명시적 설정에 따른 판정을 완료했다.**
+토큰 소진 후 저장된 변경을 이어 받아 Phase 7의 정책·CLI·보고서·시각화와 실제 cache 검증을 마무리했다.
+설정이 없거나 threshold가 모두 null이면 기존 `decision=null`을 유지한다.
+남은 실험 과제는 실제 WAVES 음원 연결과 validation 기반 threshold calibration이다.
 
 ## 1. 다음 세션에서 가장 먼저 확인할 것
 
 1. `git status --short`, `git log -6 --oneline`과 이 문서를 읽는다.
 2. `docs/phase1-analysis.md`에서 실제 WAVES 필드·merge/role 변경 문제를 확인한다.
-3. `docs/phase6-validation.md`에서 corruption 정책, 새 CLI와 실제 검증 한계를 확인한다.
+3. `docs/phase7-validation.md`에서 filter 설정, 판정 순서, null/REVIEW/UNSUPPORTED와 실제 검증을 확인한다.
+   `docs/phase6-validation.md`에서 corruption 정책, CLI와 검증 한계를 확인한다.
    `docs/phase5-validation.md`에서 batch/plot 계약과 선택 의존성을 확인한다.
    `docs/phase4-validation.md`에서 metric 단위/빈값/집계/해시 검증과 실행 방법을 확인한다.
    `docs/phase3-validation.md`는 metadata/ontology 계약, `docs/phase2-validation.md`는 추론 기록이다.
@@ -27,7 +29,7 @@ batch/시각화와 controlled corruption evaluation을 완료했다.**
 - 전체 목표는 독립 pretrained SED로 WAVES stem의 의미·시간 일관성을 측정하는 후처리 도구다.
   생성 모델 수정, 학습/fine-tuning, reference WAV 유사도 비교는 하지 않는다.
 - 먼저 구조를 분석·설명하고 최소 단일-WAV prototype을 검증하라는 요청에 따라 Phase 1~2를 진행했다.
-- 이어서 사용자가 다음 단계를 요청하여 Phase 3~6을 구현했다. Phase 7은 아직 구현하지 않았다.
+- 이어서 사용자가 다음 단계를 요청하여 Phase 3~7을 구현했다. 원문의 단계별 기능은 구현했다.
 - WAVES planned support는 영상의 정답 시간이 아니다. 내부 consistency와 영상 동기화는 구분한다.
 - 사용자 요청대로 의미 있는 작업 단위마다 로컬 commit을 남겼다. Push는 하지 않았다.
 
@@ -80,7 +82,15 @@ batch/시각화와 controlled corruption evaluation을 완료했다.**
 - 실제 공개 WAV에서 대조군+8변형을 한 모델로 추론하고 paired JSON/CSV와 9개 PNG/HTML을 생성했다.
   Synthetic 전체 길이 reference임을 명시하며 영상 annotation/인식 성능으로 해석하지 않는다.
 
-**미구현 후속 기능:** PASS/REVIEW/FAIL 정책. HTML은 static gallery이며
+- `FilterDecision` PASS/REVIEW/FAIL/UNSUPPORTED, strict `FilterConfig`, 독립적인 `decide()` API.
+  역할별 명시적 숫자/REVIEW band만 적용하고 기본 all-null에서는 판정하지 않는다.
+- `evaluate`/`visualize --filter-config`: metric과 raw cache를 유지하며 판정·조건별 audit을 추가한다.
+  missing/ambiguous/unverified는 REVIEW, 활성 역할의 미지원 mapping은 UNSUPPORTED다.
+- JSON/CSV와 PNG/SVG/HTML에서 적용한 값·경계·사유를 제공한다. 집계는 검증된 label의 개수만
+  계산하며 clip/dataset 품질 label은 만들지 않는다. 변경된 audit과 서로 다른 활성 정책 혼합을 거부한다.
+- 실제 9개 cache에서 새 추론 없이 검증용 정책을 적용하여 PASS5/REVIEW2/FAIL2를 확인했다.
+
+**아직 수행하지 않은 실험:** 실제 WAVES 음원 평가, 운영 threshold calibration. HTML은 static gallery이며
 브라우저에서 threshold를 바꾸는 대화형 편집기는 구현하지 않았다.
 
 ## 4. 파일별 구현/변경 내용
@@ -187,6 +197,26 @@ Phase 6 추가/수정 파일:
 | `scripts/verify_corruption_pipeline.py` | synthetic reference를 명시하는 실제 모델 공개 음원 검증, report/plot/비교 재현 |
 | `docs/phase6-validation.md`, `README.md`, `HANDOFF.md` | 조작/비교 정책, 실행법, 실제 관측 결과와 한계, 다음 작업 |
 
+Phase 7 추가/수정 파일:
+
+| 파일 | 구현/변경 |
+| --- | --- |
+| `src/waves_sed/decision.py` | FilterDecision, strict FilterConfig, 기본 비활성, 숫자/band 경계, 증거 guard, 조건별 audit |
+| `configs/filter.example.json` | 역할별 4개 기준 모두 null인 정책 예제 |
+| `src/waves_sed/evaluation.py` | 모든 정상/early-return에 optional filter 적용, metric과 정책 provenance 분리 |
+| `src/waves_sed/phase4.py` | evaluate --filter-config, 입력/hardlink 보호, 처리 중 설정 변경 감지 |
+| `src/waves_sed/reporting.py` | audit 재검증, 혼합 정책 거부, stem CSV 조건 필드, 역할/clip/dataset label counts |
+| `src/waves_sed/phase5.py` | visualize --filter-config, 조건별 gallery, 처리 전후 정책 hash 확인 |
+| `src/waves_sed/visualization.py` | 그림의 정책/audit 일치 검증, 판정·모든 조건 표시, 반환 metadata 판정 |
+| `tests/test_decision.py` | 103개 strict schema, min/max 경계, guard, null/FAIL 우선순위, provenance 검사 |
+| `tests/test_phase7_cli.py` | 21개 metric/cache 불변, all-null, mapping/누락/ambiguous, band, 입력 보호 |
+| `tests/test_phase7_reporting.py` | 26개 label/count/CSV/null/기여 수, audit 변경, 혼합 정책, legacy 형태 유지 |
+| `tests/test_phase7_visualization.py` | 27개 label/모든 조건 표시, 오래된 audit, config 보호/변경, 숫자 표시 정밀도 |
+| `scripts/verify_filter_policy.py` | Phase 6의 명시적 synthetic demo cache로 정책만 재평가, 입력/metric 불변·그림 검증 |
+| `docs/phase7-validation.md`, `README.md`, `HANDOFF.md` | 사용법, 판정 의미/제한, 검증 결과, 남은 실험 과제 |
+
+Phase 7은 새 dependency를 추가하지 않았다. 평가/판정은 NumPy 기본 환경만으로 실행된다.
+
 Vendor 루트: `src/waves_sed/_vendor/pretrained_sed/`.
 
 | 파일 | 내용 |
@@ -230,6 +260,9 @@ Resources 루트: `src/waves_sed/resources/`.
 - Phase 5 최종 전체 실행: **647 passed, 1 skipped**, 54.62초. Ruff lint/format 및 wheel build 통과.
 - Phase 6 최종 전체 실행: **842 passed, 1 skipped**, 69.67초. Phase 6 신규 195개 통과.
   Ruff lint/format, diff check, wheel build 및 독립 환경 검증 통과.
+- Phase 7 최종 전체 실행: **1019 passed, 1 skipped**, 47.32초. Phase 7 신규177개 통과.
+  첫 전체 실행에서 기존 시각화 subprocess test가 timeout했으나 단독1.44초 및 전체 재실행 통과.
+  Timeout 기준을 늘리거나 제품 코드를 우회하지 않았다. Ruff/format/diff check/wheel 검증 통과.
 - audioread의 Python3.11 `aifc/audioop/sunau` deprecation warning3개만 있다.
 - Ruff check/format check, dependency check, CPU requirements dry-run, wheel build 통과.
 - Phase 3 최종 코드로 wheel을 빌드했다. 별도 `.cache/phase3-package-smoke` 환경에 wheel과
@@ -291,6 +324,20 @@ Phase 6 실제 자료 검증:
   experiment ID와 WAV hash의 의미를 구분한다. Cache identity는 실제 파일 bytes의 SHA다.
 - `outputs/phase6/wheel-comparison`, `wheel-experiment`: 독립 설치 검증 산출물.
 
+Phase 7 실제 자료 검증:
+- `outputs/phase7/demonstration-filter.json`: 동작 검증용 정책. onset recall0.9/오차50ms,
+  span pass0.79/fail0.78, ambience occupancy0.8. 권장값이나 calibration 결과가 아니다.
+- `frozen-reports/`: 실제 frozen62개, 빈 prediction index, REVIEW2/UNSUPPORTED60/PASS0/FAIL0.
+  `frozen-disabled-reports/`: 기본 all-null 정책으로 unassigned62. 누락을 PASS로 바꾸지 않는다.
+- `metro-policy-demo/reports/`: Phase 6의 실제 9개 cache를 재평가, PASS5/REVIEW2/FAIL2.
+  500ms shift와 shorten은 REVIEW, 1000ms shift와 remove는 FAIL이었다. 나머지5개 PASS.
+  Synthetic full-track reference에서 선택한 정책의 결과이며 실제 품질 성능으로 해석하지 않는다.
+- `metro-policy-demo/visuals/index.html`: 모든9개 PNG와 JSON index. REVIEW 그림의 조건/경계/값을
+  직접 열어 읽을 수 있고 겹침이 없음을 확인했다. 기존 WAV/NPZ/metric/검출 구간은 불변이다.
+- `.cache/phase7-package-smoke`: 새 wheel+NumPy만 설치; torch/torchaudio/librosa/soundfile/matplotlib 없음.
+  같은 스크립트를 --plots 없이 실행하여9개 stem report와 summary가 원래 결과와 정확히 동일했다.
+  결과는 `outputs/phase7/wheel-policy-demo/reports/`에 있다.
+
 ## 6. 환경과 Git
 
 Windows / Python3.11.9 / i3-1315U / RAM약16GB / CUDA없음.
@@ -316,7 +363,10 @@ Git commit:
 - `f271193`: PNG/SVG evidence와 batch/visualize CLI, HTML gallery
 - `03cd970`: Phase 5 문서/인수인계
 - `ebde56e`: controlled waveform experiment, paired evaluation, CLI/테스트/실제 검증 스크립트
-- Phase 6 문서 commit이 뒤에 이어진다. 정확한 hash는 `git log`를 확인한다.
+- `e44737d`: Phase 6 문서/인수인계
+- `45ac077`: explicit role-based policy, evaluator/CLI/report audit, tests
+- `ffa6238`: policy evidence 시각화와 기존 demo cache 재평가 script
+- Phase 7 문서 commit이 뒤에 이어진다. 정확한 hash는 `git log`를 확인한다.
 
 로컬 Git 제외 자산:
 - `.cache/PretrainedSED`: 공식 repository clone, revision
@@ -334,10 +384,10 @@ Git commit:
 
 ## 7. 미해결 제약과 다음 작업 순서
 
-Phase 1~6에서 발견한 코드 오류는 수정했다. 남은 제약:
+Phase 1~7에서 발견한 코드 오류는 수정했다. 남은 제약:
 - 실제 WAVES WAV 없음. 향후 실제 stem 검증은 materialized run 또는 명시적인 경로 매핑이 필요.
 - CUDA/Linux/다른 Python 버전 실행은 미검증.
-- Phase 7 기능은 아직 미구현. 현재 PASS/FAIL을 내리지 않음.
+- 정책은 구현했으나 실제 운영 threshold는 보정하지 않았다. 명시적 설정 없이는 판정하지 않음.
 - 공식 ontology에 없는 31개 모델 ID는 hierarchy가 알려져 있지 않음. 직접 mapping은 가능하나 descendant 확장 금지.
 - 실제 reference annotation이나 threshold calibration은 없음. WAVES 계획만으로 영상 동기화를 입증하지 못함.
 - Report 각 파일은 atomic replace지만 여러 파일 전체를 한 transaction으로 쓰는 것은 아님.
@@ -345,19 +395,17 @@ Phase 1~6에서 발견한 코드 오류는 수정했다. 남은 제약:
 
 후속 순서:
 1. 사용자가 새로 요청하는 범위와 현재 Git 상태 확인.
-2. 원문 15절 및 Phase 7 요구를 확인한다. `FilterDecision` PASS/REVIEW/FAIL/UNSUPPORTED와
-   역할별 threshold config를 설계하되 기본 null이면 판정에 쓰지 않는다.
-3. 평가 metric과 optional decision을 분리한다. 미지원 mapping, 누락/모호한 reference,
-   cache 오류, 필요한 metric이 null인 경우를 정상 판정으로 오해하지 않도록 상태 정책을 정한다.
-4. `onset.min_event_recall/max_mean_onset_error_ms`, `span.min_tiou`,
-   `ambience.min_occupancy`처럼 명시한 조건만 사용한다. REVIEW/FAIL 경계와 어떤 조건이
-   판정에 기여했는지 기록한다. 근거 없는 calibrated default를 만들지 않는다.
-5. 기존 JSON/CSV/시각화와 연결하고, threshold 없는 기존 동작과 raw cache 재사용을 유지한다.
-   Synthetic report로 경계값·null·역할·미지원·복수 조건을 검증한다.
-6. 실제 WAVES run/WAV가 추가되면 소수 stem의 선택 구간에 Phase 6을 적용한다.
-   단일 공개 demo로 실용 threshold나 perceptual quality를 보정하지 않는다.
-7. 실행법/테스트/한계를 기록하고 의미 있는 단위로 commit한다. Human evaluation platform이나
-   학습은 구현하지 않는다. 사용자 요청에 따라 단계별로 진행한다.
+2. Phase 1~7을 다시 구현하지 않는다. 사용자가 요청하는 다음 실험/확장 범위를 파악한다.
+3. 실제 WAVES materialized run/WAV가 있으면 adapter에 연결한다. 없으면 경로를 추측하지 말고
+   실제 run 위치/명시적인 audio ID mapping이 필요한지 사용자에게 구체적으로 확인한다.
+4. 소수 source의 수동 mapping과 reference 상태를 확인하고 batch-infer→evaluate→visualize를 실행한다.
+   실제 계획이 ambiguous이면 metric opt-in과 별개로 decision은 REVIEW인 정책을 유지한다.
+5. 실제 event 구간에 Phase 6 controlled corruption을 적용해 누락/추가/이동 반응을 조사한다.
+   공개 demo의 임의 구간 삭제/복제와 synthetic 전체 길이 reference를 실제 정답으로 쓰지 않는다.
+6. 검증 자료가 준비된 source/role에서만 threshold를 조정해 별도 filter config로 관리한다.
+   기본 all-null을 유지하고 calibrated라는 명칭은 근거가 있을 때만 사용한다.
+7. 변경 범위에 맞는 검증과 의미 있는 commit을 남긴다. Human platform/학습/영상 detector/파일
+   자동 이동·삭제는 현재 구현 범위 밖이며 새 요청 없이 추가하지 않는다.
 
 ## 8. 중요한 코드 구조와 주의사항
 
@@ -412,6 +460,16 @@ Phase 1~6에서 발견한 코드 오류는 수정했다. 남은 제약:
   보장하지 않는다. 실제 파형 조작과 관측 SED 반응을 별도 필드로 남긴다.
 - Compare는 저장된 report와 manifest hash/context를 비교하며 현재 WAV/NPZ를 다시 읽지 않는다.
   현재 bytes 검증에는 evaluate를 다시 실행한다. 생성 manifest는 기존 파일을 덮어쓰지 않는다.
+- FilterConfig는 EvaluationConfig와 별도다. numeric rule은 pass=fail, band는 min의 fail<=pass,
+  max의 pass<=fail이다. 경계에서 PASS는 포함, FAIL은 엄격 비교이며 band 경계는 REVIEW일 수 있다.
+- Disabled/현재 역할 미설정은 null이다. 활성정책의 unknownrole/활성역할 unsupportedmapping은
+  UNSUPPORTED. missing/ambiguous/unverified는 REVIEW, 유효FAIL은 다른 nullmetric보다 우선한다.
+- `allow_ambiguous_reference`는 metric 계산 opt-in이며 PASS/FAIL 허용 스위치가 아니다.
+  Metric convention의 decision=none은 metric 계층 설명이며 optional 결과는 stem decision_details에 있다.
+- Report/plot은 audit을 재계산해 일치 여부를 확인한다. Label이 있으면 다른 정책/legacy무설정
+  보고서와 혼합 집계하지 않는다. Source/mapping/reference를 바꾸어 더 좋은 label을 만들지 않는다.
+- decide(report,policy)는 저장된 evidence 상태를 소비하며 실제 audio/cache를 다시 검사하지 않는다.
+  필터 설정 파일 bytes의 hash는 load 시점에 고정하고 CLI가 처리 중 변경을 확인한다.
 - mapping의 supported는 alias/class column 연결 성공이다. 검출 여부나 품질 점수가 아니다.
 - `reference_status=planned`도 실제 영상의 정답을 뜻하지 않는다. 이 archive의 ambiguous43개를
   그대로 정답으로 간주하지 않는다. merged child 시간은 parent와 합집합으로 만들지 않았다.
@@ -426,6 +484,9 @@ cd C:\multitrack-audio-filtering
 git status --short
 git log -6 --oneline
 uv pip install --python .venv/Scripts/python.exe -e ".[visualization,corruption]"
+.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/phase3/frozen-stems.json --predictions outputs/phase4/frozen-prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --filter-config configs/filter.example.json --output-dir outputs/phase7/frozen-disabled-reports
+# 기존 실제cache 정책 재검증은 새 output-dir로 실행 (--plots 생략 시 NumPy만 필요):
+# .venv/Scripts/python.exe scripts/verify_filter_policy.py --demo-dir outputs/phase6/metro-demo --filter-config outputs/phase7/demonstration-filter.json --output-dir outputs/phase7/policy-demo-new --plots
 .venv/Scripts/python.exe -m waves_sed compare-corruptions --experiment outputs/phase6/metro-demo/experiment/experiment.json --report outputs/phase6/metro-demo/reports/dataset.json --output-dir outputs/phase6/metro-demo/comparison
 # 실제 추론까지 재현할 때만 새 output-dir로 실행:
 # .venv/Scripts/python.exe scripts/verify_corruption_pipeline.py --audio .cache/PretrainedSED/test_files/752547__iscence__milan_metro_coming_in_station.wav --class-id /m/0195fx --corruptions configs/corruption.example.json --output-dir outputs/phase6/metro-demo-new

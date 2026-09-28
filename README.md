@@ -3,7 +3,7 @@
 WAVES가 생성한 stem을 frozen AudioSet-Strong SED 모델로 검사하는 독립적인 후처리 프로젝트입니다.
 WAVES 생성 파이프라인을 수정하거나 모델을 학습하지 않습니다.
 
-현재 **Phase 1~6: frozen 추론, metadata/mapping, 역할별 평가, batch/시각화와 controlled corruption 평가**를 구현했습니다.
+현재 **Phase 1~7: frozen 추론, metadata/mapping, 역할별 평가, batch/시각화, controlled corruption과 설정 기반 판정**을 구현했습니다.
 WAVES의 planned support와 SED 출력 비교는 내부 consistency 검사이며,
 실제 영상과의 동기화를 입증하지 않습니다.
 
@@ -12,7 +12,24 @@ WAVES의 planned support와 SED 출력 비교는 내부 consistency 검사이며
 metadata/mapping 사용법은 [Phase 3 문서](docs/phase3-validation.md),
 cache 기반 평가와 측정 단위는 [Phase 4 문서](docs/phase4-validation.md),
 batch/시각화 사용법은 [Phase 5 문서](docs/phase5-validation.md),
-파형 변형과 조작 전후 비교는 [Phase 6 문서](docs/phase6-validation.md)에 있습니다.
+파형 변형과 조작 전후 비교는 [Phase 6 문서](docs/phase6-validation.md),
+선택적인 판정 설정은 [Phase 7 문서](docs/phase7-validation.md)에 있습니다.
+
+## 설정 기반 판정 (Phase 7)
+
+`evaluate`와 `visualize`에 `--filter-config`를 추가하면 계산된 metric에 정책을 적용합니다.
+기준이 없으면 판정하지 않습니다. [기본 설정](configs/filter.example.json)은 모두 null이며,
+실제 운영 기준은 validation 결과에 따라 별도 파일에 명시합니다.
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/stems.json --predictions outputs/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --filter-config configs/filter.example.json --output-dir outputs/filtered-reports
+```
+
+숫자 경계 또는 `{"pass": 값, "fail": 값}`으로 REVIEW 구간을 설정할 수 있습니다.
+누락·모호한 근거는 REVIEW, 적용 가능한 역할의 미지원 mapping은 UNSUPPORTED로 남깁니다.
+JSON/CSV와 그림에 각 조건의 값·경계·결과를 기록하며, 정책 변경에 새 추론은 필요하지 않습니다.
+PASS는 명시한 시간 일관성 조건의 충족이며 전체 음질이나 영상 동기화의 보증은 아닙니다.
+자세한 [경계값·판정 순서·실행법](docs/phase7-validation.md)을 확인하세요.
 
 ## Controlled corruption (Phase 6)
 
@@ -75,7 +92,7 @@ ambience는 occupancy와 시간 가중 raw confidence를 계산합니다. NumPy�
 WAVES 계획이 `ambiguous`이면 기본적으로 시간 평가에서 제외합니다. 누락된 cache/reference와
 미지원 mapping은 `unavailable` 사유와 `metrics=null`로 남깁니다. Source/cache SHA-256과 전체
 관측 시간축을 확인하며, outside-family evidence를 자동 실패로 판정하지 않습니다.
-`decision=null`이고 예제 threshold는 아직 보정되지 않았습니다.
+판정 설정을 생략하면 `decision=null`이며 예제 threshold는 아직 보정되지 않았습니다.
 
 현재 저장된 실제 공개 예제 cache로 threshold 변경·report 출력을 확인하는 명령:
 
@@ -169,7 +186,7 @@ print(prediction.class_ids[0], prediction.class_names[0])
 ```
 
 공식 AudioSet ontology와 명시적 WAVES source mapping은 Phase 3에 구현했습니다.
-Event 추출과 metric/report는 Phase 4에 구현했습니다. 필터 판정은 후속 단계입니다. 447-class vocabulary와 ontology는
+Event 추출과 metric/report는 Phase 4, 선택적인 필터 판정은 Phase 7에 구현했습니다. 447-class vocabulary와 ontology는
 서로 다른 metadata이며, class ID로 연결합니다.
 
 ## 검증
@@ -214,7 +231,7 @@ candidate ID로 조인합니다. 특히 relabel, role 변경, merge가 있으면
 3. WAVES metadata adapter, ontology 및 명시적 source mapping
 4. 역할별 temporal metric과 JSON/CSV report
 5. 시각화와 batch 처리
-6. controlled corruption 평가 (여기까지 완료)
-7. calibration 후 설정에 따른 PASS / REVIEW / FAIL 판단 (다음 단계)
+6. controlled corruption 평가
+7. 명시적 설정에 따른 PASS / REVIEW / FAIL / UNSUPPORTED 판단 (여기까지 완료, calibration 별도)
 
 모델·오디오·추론 출력은 Git에 넣지 않습니다. 주요 작업 단위마다 로컬 커밋을 남깁니다.
