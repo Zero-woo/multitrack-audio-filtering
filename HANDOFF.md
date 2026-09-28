@@ -5,6 +5,9 @@ batch/시각화, controlled corruption과 명시적 설정에 따른 판정을 �
 토큰 소진 후 저장된 변경을 이어 받아 Phase 7의 정책·CLI·보고서·시각화와 실제 cache 검증을 마무리했다.
 설정이 없거나 threshold가 모두 null이면 기존 `decision=null`을 유지한다.
 남은 실험 과제는 실제 WAVES 음원 연결과 validation 기반 threshold calibration이다.
+후속 조사에서 frozen용 mapping 후보 18개 규칙을 추가해 23/62개를 연결했다.
+음원은 숨김/Git 제외 파일까지 확인했지만 없었다. 상세 입력 조사와 재개 절차는
+`docs/real-data-readiness.md`에 있다. 실제 run 경로를 사용자에게 요청한 상태다.
 
 ## 1. 다음 세션에서 가장 먼저 확인할 것
 
@@ -15,7 +18,9 @@ batch/시각화, controlled corruption과 명시적 설정에 따른 판정을 �
    `docs/phase5-validation.md`에서 batch/plot 계약과 선택 의존성을 확인한다.
    `docs/phase4-validation.md`에서 metric 단위/빈값/집계/해시 검증과 실행 방법을 확인한다.
    `docs/phase3-validation.md`는 metadata/ontology 계약, `docs/phase2-validation.md`는 추론 기록이다.
-4. `C:\WAVES`에 실제 run/WAV가 추가되었는지 확인한다. 현재 checkout에는 WAV가 없다.
+4. 사용자가 실제 run/WAV 경로를 알려주었는지 먼저 확인한다. `docs/real-data-readiness.md`와
+   `outputs/real-data-readiness/frozen-review/required-audio.csv`에 selected audio ID/과거 경로를 정리했다.
+   현재 checkout에는 WAV가 없다. 다른 위치의 입력이 없으면 모델 검증/보정을 진행할 수 없다.
 5. 새 사용자 지시를 확인한다. `reference_status=ambiguous`는 기본 평가 제외이며 설정 opt-in이
    필요하다. 실제 WAV가 없을 때 `audio_id`로 파일명을 만들지 않는다.
 
@@ -93,6 +98,11 @@ batch/시각화, controlled corruption과 명시적 설정에 따른 판정을 �
 **아직 수행하지 않은 실험:** 실제 WAVES 음원 평가, 운영 threshold calibration. HTML은 static gallery이며
 브라우저에서 threshold를 바꾸는 대화형 편집기는 구현하지 않았다.
 
+후속 준비 완료: `configs/source_mappings.frozen-review.json`의 18개 후보 규칙은 실제 447개 class와
+ontology를 확인했다. 기존 example은 유지했다. 연결된 23개는 planned9/ambiguous14,
+onset8/span12/ambience3이며 나머지39개는 unsupported다. Mapping 이외 metadata는 동일하다.
+과거 system manifest의 57개 selected-attempt 경로를 대조했지만 실제 파일/해시 연결은 아직 없다.
+
 ## 4. 파일별 구현/변경 내용
 
 | 파일 | 구현/변경 |
@@ -104,6 +114,8 @@ batch/시각화, controlled corruption과 명시적 설정에 따른 판정을 �
 | `docs/phase2-validation.md` | 실제 checkpoint 추론과 검증 결과/한계/재현 명령 |
 | `docs/phase3-validation.md` | adapter/mapping 사용법, ontology 차이, 누락/시간 기준 정책, 실제 자료 검증 |
 | `HANDOFF.md` | 현재 상태와 후속 작업 인수인계 |
+| `configs/source_mappings.frozen-review.json` | frozen final label에 대한 18개 명시적 후보 mapping, 범위/한계 notes |
+| `docs/real-data-readiness.md` | 실제 음원 부재 조사, 과거 경로/청취 자료 대조, mapping 검증과 보정 재개 순서 |
 | `THIRD_PARTY_NOTICES.md` | MIT/revision/metadata 및 checkpoint·예제 WAV 출처 |
 | `pyproject.toml` | src package, NumPy 기본 의존성, atst/dev extras, CLI/data, pytest/Ruff |
 | `requirements-cpu.txt` | CPU torch/torchaudio 2.10.0, NumPy 1.26.4, editable atst/dev 설치 |
@@ -338,6 +350,16 @@ Phase 7 실제 자료 검증:
   같은 스크립트를 --plots 없이 실행하여9개 stem report와 summary가 원래 결과와 정확히 동일했다.
   결과는 `outputs/phase7/wheel-policy-demo/reports/`에 있다.
 
+실제 WAVES 입력 준비 검증 (2026-09-29):
+
+- 관련 mapping/ontology/adapter CLI 기존 테스트 **97 passed**, 3.89초.
+- `outputs/real-data-readiness/frozen-review/stems.json`: supported23/unsupported39.
+- `batch/`: missing_audio62, 초기화/추론0, 종료 코드1. `reports/`: unavailable62, metric기여0/null,
+  기본 정책 unassigned62. 실제 음원 검증으로 해석하지 않는다.
+- `required-audio.csv`: selected audio ID와 과거 경로 locator62행. `inventory.json`: 입력hash/집계.
+  두 조사 파일은 별도 내보내기이며 CLI가 자동 생성하지 않는다. 원본 stem/mapping 이외 필드 동일 확인.
+- Human generated12행은 candidate만 대응하고 대상 WAV/attempt/hash가 없으므로 검수 정답으로 확정 연결 불가.
+
 ## 6. 환경과 Git
 
 Windows / Python3.11.9 / i3-1315U / RAM약16GB / CUDA없음.
@@ -366,7 +388,9 @@ Git commit:
 - `e44737d`: Phase 6 문서/인수인계
 - `45ac077`: explicit role-based policy, evaluator/CLI/report audit, tests
 - `ffa6238`: policy evidence 시각화와 기존 demo cache 재평가 script
-- Phase 7 문서 commit이 뒤에 이어진다. 정확한 hash는 `git log`를 확인한다.
+- `adb0a4f`: Phase 7 검증/운영 인수인계 문서
+- `40a8ccf`: frozen final stem용 명시적 candidate mapping18개
+- 실제 자료 준비 문서 commit이 뒤에 이어진다. 정확한 hash는 `git log`를 확인한다.
 
 로컬 Git 제외 자산:
 - `.cache/PretrainedSED`: 공식 repository clone, revision
@@ -395,7 +419,8 @@ Phase 1~7에서 발견한 코드 오류는 수정했다. 남은 제약:
 
 후속 순서:
 1. 사용자가 새로 요청하는 범위와 현재 Git 상태 확인.
-2. Phase 1~7을 다시 구현하지 않는다. 사용자가 요청하는 다음 실험/확장 범위를 파악한다.
+2. Phase 1~7을 다시 구현하지 않는다. 현재 요청은 남은 실제 검증/보정을 진행하는 것이다.
+   `docs/real-data-readiness.md`의 조사 결과를 먼저 읽고 같은 음원 검색을 반복하지 않는다.
 3. 실제 WAVES materialized run/WAV가 있으면 adapter에 연결한다. 없으면 경로를 추측하지 말고
    실제 run 위치/명시적인 audio ID mapping이 필요한지 사용자에게 구체적으로 확인한다.
 4. 소수 source의 수동 mapping과 reference 상태를 확인하고 batch-infer→evaluate→visualize를 실행한다.

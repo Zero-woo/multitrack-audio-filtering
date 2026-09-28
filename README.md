@@ -15,6 +15,10 @@ batch/시각화 사용법은 [Phase 5 문서](docs/phase5-validation.md),
 파형 변형과 조작 전후 비교는 [Phase 6 문서](docs/phase6-validation.md),
 선택적인 판정 설정은 [Phase 7 문서](docs/phase7-validation.md)에 있습니다.
 
+실제 WAVES 평가를 위한 [입력 조사와 재개 순서](docs/real-data-readiness.md)를 정리했습니다.
+[추가 mapping 후보](configs/source_mappings.frozen-review.json)는 frozen 62개 중 23개를 연결합니다.
+현재 checkout에는 생성 음원이 없어 실제 평가와 운영 threshold 보정은 남아 있습니다.
+
 ## 설정 기반 판정 (Phase 7)
 
 `evaluate`와 `visualize`에 `--filter-config`를 추가하면 계산된 metric에 정책을 적용합니다.
