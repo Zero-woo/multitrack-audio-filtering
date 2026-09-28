@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+from waves_sed.decision import FilterConfig
 from waves_sed.evaluation import evaluate_stem
 from waves_sed.evaluation_config import EvaluationConfig
 from waves_sed.mapping import ManualMapping
@@ -37,6 +38,9 @@ def add_commands(commands) -> None:
     visual.add_argument("--predictions", required=True, type=Path)
     visual.add_argument("--mappings", required=True, type=Path)
     visual.add_argument("--config", required=True, type=Path)
+    visual.add_argument(
+        "--filter-config", type=Path, help="Optional temporal consistency decision policy"
+    )
     visual.add_argument("--ontology", type=Path)
     visual.add_argument("--output-dir", required=True, type=Path)
     visual.add_argument("--format", choices=["png", "svg"], default="png")
@@ -60,6 +64,16 @@ def _gallery(records: list[dict]) -> str:
             f"Reference: {reference['status'] or 'unknown'}"
         )
         reasons = ", ".join(report["reason_codes"])
+        audit = report.get("decision_details")
+        decision = ""
+        if audit is not None:
+            from waves_sed.visualization import _decision_lines
+
+            decision = (
+                '<div class="decision">'
+                + "".join("<p>" + escape(line) + "</p>" for line in _decision_lines(report))
+                + "</div>"
+            )
         if item["status"] == "rendered":
             relative = escape(item["path"], quote=True)
             media = (
@@ -79,9 +93,16 @@ def _gallery(records: list[dict]) -> str:
             + escape(details)
             + "</p>"
             + ('<p class="reason">' + escape(reasons) + "</p>" if reasons else "")
+            + decision
             + media
             + "</article>"
         )
+    decision_intro = (
+        "Configured decisions concern temporal consistency with the stated reference. "
+        "They do not establish overall audio quality; no aggregate decision is assigned."
+        if any(item["evaluation"].get("decision_details") is not None for item in records)
+        else "No quality decision is assigned."
+    )
     return (
         """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -91,9 +112,12 @@ main{max-width:1280px;margin:32px auto;padding:0 24px}h1{margin-bottom:8px}
 article{background:white;border:1px solid #d5dfe5;border-radius:8px;padding:20px;margin:24px 0}
 h2{font-size:20px;margin:0;overflow-wrap:anywhere}p{margin:8px 0}.id{color:#536875;overflow-wrap:anywhere}
 img{display:block;max-width:100%;height:auto;margin:16px auto 0}.reason,.error{color:#874500}
-a{color:#005f87}</style></head><body><main><h1>Stem temporal evidence</h1>
+a{color:#005f87}.decision{border-left:4px solid #536875;padding:8px 12px;background:#f4f6f8;overflow-wrap:anywhere}
+</style></head><body><main><h1>Stem temporal evidence</h1>
 <p>WAVES planned support measures internal consistency, not video synchronization.
-Unavailable evidence stays unavailable. No quality decision is assigned.</p>
+Unavailable evidence stays unavailable. """
+        + decision_intro
+        + """</p>
 <p><a href="visualization-index.json">Evaluation settings, provenance and plot index (JSON)</a></p>
 """
         + ("\n".join(cards) if cards else "<p>No stems selected.</p>")
@@ -108,6 +132,9 @@ def _visualize(args) -> int:
     index = load_prediction_index(args.predictions, {stem.stem_id for stem in stems})
     mapping = ManualMapping.load(args.mappings, AudioSetOntology.load(args.ontology))
     config = EvaluationConfig.load(args.config)
+    filter_config = (
+        FilterConfig.load(args.filter_config) if args.filter_config is not None else None
+    )
     selected = (
         stems if args.stem_id is None else [stem for stem in stems if stem.stem_id == args.stem_id]
     )
@@ -121,6 +148,18 @@ def _visualize(args) -> int:
     }
     if args.ontology is not None:
         inputs["ontology"] = args.ontology
+    if args.filter_config is not None:
+        inputs["filter_config"] = args.filter_config
+
+    def verify_filter_input():
+        if (
+            filter_config is not None
+            and sha256(args.filter_config) != filter_config.provenance["sha256"]
+        ):
+            raise ValueError(
+                "Filter config changed during visualization; rerun with the current policy"
+            )
+
     protected = [*inputs.values(), *index.values(), *_provenance_paths(stems)]
     # Inspect all cache headers before any plot write, including later/unselected
     # stems and malformed scores whose metadata still records original sources.
@@ -135,6 +174,7 @@ def _visualize(args) -> int:
     outputs = [args.output_dir / path for path in paths.values()]
     outputs.extend([args.output_dir / "index.html", args.output_dir / "visualization-index.json"])
     preflight_outputs(outputs, protected)
+    verify_filter_input()
     if selected:
         try:
             for name in ("matplotlib", "soundfile"):
@@ -163,6 +203,7 @@ def _visualize(args) -> int:
             config,
             prediction_path=cache,
             prediction_error=error,
+            filter_config=filter_config,
         )
         record = {
             "stem_id": stem.stem_id,
@@ -182,6 +223,7 @@ def _visualize(args) -> int:
                 args.output_dir / paths[stem.stem_id],
                 max_waveform_points=args.max_waveform_points,
                 protected_inputs=protected,
+                filter_config=filter_config,
             )
             record["status"] = "rendered"
         except (OSError, ValueError, RuntimeError, ImportError) as exc:
@@ -189,6 +231,7 @@ def _visualize(args) -> int:
             print(f"waves-sed: plot {stem.stem_id}: {exc}", file=sys.stderr)
         records.append(record)
     failed = sum(row["status"] == "failed" for row in records)
+    verify_filter_input()
     result = {
         "schema_version": 1,
         "summary": {
@@ -211,6 +254,9 @@ def _visualize(args) -> int:
         "index_policy": "only rendered rows are current plots; old/unindexed files are not current results",
         "decision": None,
     }
+    if filter_config is not None:
+        result["provenance"]["filter_config"] = filter_config.to_dict()
+        result["provenance"]["filter_config_provenance"] = filter_config.provenance
     _atomic_text(args.output_dir / "index.html", _gallery(records))
     _atomic_text(
         args.output_dir / "visualization-index.json",

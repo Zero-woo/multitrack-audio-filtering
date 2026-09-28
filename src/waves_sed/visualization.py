@@ -10,6 +10,7 @@ from tempfile import NamedTemporaryFile
 
 import numpy as np
 
+from waves_sed.decision import FilterConfig, decide
 from waves_sed.evaluation import validate_cache_identity
 from waves_sed.evaluation_config import EvaluationConfig
 from waves_sed.events import smooth_target
@@ -104,7 +105,9 @@ def _provenance_paths(value) -> list[Path]:
     return paths
 
 
-def _validate_report(stem, prediction, report, mapping, config) -> tuple[str, str | None]:
+def _validate_report(
+    stem, prediction, report, mapping, config, filter_config=None
+) -> tuple[str, str | None]:
     """Bind report, current source bytes, and rendered raw arrays before plotting."""
     config.validate()
     if report.get("schema_version") != 1:
@@ -119,6 +122,25 @@ def _validate_report(stem, prediction, report, mapping, config) -> tuple[str, st
         raise ValueError("Visualization report evaluation config is stale")
     if provenance.get("mapping") != mapping.provenance:
         raise ValueError("Visualization report mapping provenance is stale")
+    audit = report.get("decision_details")
+    if filter_config is None:
+        if (
+            report.get("decision") is not None
+            or audit is not None
+            or provenance.get("filter_config") is not None
+            or provenance.get("filter_config_provenance") is not None
+        ):
+            raise ValueError("Visualization decision requires its filter config and audit")
+    else:
+        if provenance.get("filter_config") != filter_config.to_dict():
+            raise ValueError("Visualization report filter config is stale")
+        if provenance.get("filter_config_provenance") != filter_config.provenance:
+            raise ValueError("Visualization report filter config provenance is stale")
+        current_audit = decide(report, filter_config)
+        if audit != current_audit or report.get("decision") != current_audit["decision"]:
+            raise ValueError(
+                "Visualization decision audit does not match the current policy and evidence"
+            )
     reference = report.get("reference") or {}
     if report.get("expected_intervals") != reference.get("intervals"):
         raise ValueError("Visualization report reference intervals are inconsistent")
@@ -222,6 +244,40 @@ def _label(text: str, width: int) -> str:
     return textwrap.fill(" ".join(text.split()), width, max_lines=2, placeholder="...")
 
 
+def _decision_lines(report: dict) -> list[str]:
+    """Describe the explicit policy and every condition without implying audio quality."""
+    audit = report.get("decision_details")
+    if audit is None:
+        return []
+    lines = [
+        "Temporal consistency decision: "
+        + (audit["decision"] or "unassigned")
+        + f" | policy status: {audit['status']}"
+    ]
+    if audit["reason_codes"]:
+        lines.append("Decision reasons: " + ", ".join(audit["reason_codes"]))
+
+    def number(value):
+        # Keep boundary distinctions: rounded values can falsely appear to pass.
+        text = str(value)
+        return text[:-2] if text.endswith(".0") else text
+
+    for check in audit["checks"]:
+        value = check["value"]
+        observed = number(value) if value is not None else "unavailable"
+        direction = ">=" if check["direction"] == "min" else "<="
+        line = (
+            f"{check['rule']}: {check['metric']}={observed}; "
+            f"PASS {direction} {number(check['pass_threshold'])}, "
+            f"FAIL {'<' if direction == '>=' else '>'} {number(check['fail_threshold'])}; "
+            f"{check['decision']} ({check['status']})"
+        )
+        if check["reason_codes"]:
+            line += "; " + ", ".join(check["reason_codes"])
+        lines.append(line)
+    return lines
+
+
 def _build_figure(
     stem, prediction, report, mapping, config, waveform, envelope, curve_status, curve_reason=None
 ):
@@ -232,18 +288,29 @@ def _build_figure(
         from matplotlib.text import Text
     except ImportError as error:
         raise RuntimeError("Figure export requires pip install '.[visualization]'") from error
-    figure = Figure(figsize=(12, 9), dpi=140)
+    audit_lines = [
+        wrapped for line in _decision_lines(report) for wrapped in textwrap.wrap(line, width=140)
+    ]
+    audit_height = 0.18 * len(audit_lines) + 0.2 if audit_lines else 0
+    figure_height = 9 + audit_height
+
+    def header_y(original):
+        return 1 - (1 - original) * 9 / figure_height
+
+    figure = Figure(figsize=(12, figure_height), dpi=140)
     FigureCanvasAgg(figure)
     grid = figure.add_gridspec(4, 1, height_ratios=(2, 0.7, 2, 0.7), hspace=0.2)
     axes = [figure.add_subplot(grid[0])]
     axes.extend(figure.add_subplot(grid[index], sharex=axes[0]) for index in range(1, 4))
-    figure.subplots_adjust(left=0.11, right=0.98, top=0.73, bottom=0.10)
+    figure.subplots_adjust(
+        left=0.11, right=0.98, top=0.73 * 9 / figure_height, bottom=0.10 * 9 / figure_height
+    )
     description = stem.source_description or "Missing source description"
     title = _label(f"{description}  |  {stem.role or 'unknown role'}", 110)
-    figure.text(0.11, 0.975, title, va="top", fontsize=13, weight="bold")
+    figure.text(0.11, header_y(0.975), title, va="top", fontsize=13, weight="bold")
     figure.text(
         0.11,
-        0.915,
+        header_y(0.915),
         _label(
             f"Stem: {stem.stem_id} | Backend: {report.get('sed_backend') or 'unavailable'}", 130
         ),
@@ -253,7 +320,7 @@ def _build_figure(
     reference = report.get("reference") or {}
     figure.text(
         0.11,
-        0.88,
+        header_y(0.88),
         _label(
             f"Reference: {reference.get('origin') or 'unavailable'} | status: {reference.get('status') or 'missing'}"
             f" | used for metrics: {reference.get('usable') is True and report.get('evaluation_status') == 'evaluated'}"
@@ -264,13 +331,28 @@ def _build_figure(
         fontsize=9,
     )
     reasons = ", ".join(report.get("reason_codes", [])) or "none"
-    figure.text(0.11, 0.835, _label(f"Reasons: {reasons}", 140), va="top", fontsize=8)
+    figure.text(0.11, header_y(0.835), _label(f"Reasons: {reasons}", 140), va="top", fontsize=8)
     metric_prefix = (
         "Reported metrics (current curve unavailable): " if curve_status != "available" else ""
     )
     figure.text(
-        0.11, 0.785, _label(metric_prefix + _metric_text(report), 145), va="top", fontsize=8
+        0.11,
+        header_y(0.785),
+        _label(metric_prefix + _metric_text(report), 145),
+        va="top",
+        fontsize=8,
     )
+    audit_artist = None
+    if audit_lines:
+        audit_artist = figure.text(
+            0.11,
+            header_y(0.735),
+            "\n".join(audit_lines),
+            va="top",
+            fontsize=8,
+            linespacing=1.3,
+            bbox={"facecolor": "#f4f6f8", "edgecolor": "#aebbc4", "pad": 5},
+        )
     wave_axis, reference_axis, target_axis, detection_axis = axes
     if envelope is None:
         wave_axis.text(
@@ -415,7 +497,7 @@ def _build_figure(
     axes[0].set_xlim(0, duration if duration else 1)
     figure.text(
         0.11,
-        0.035,
+        0.035 * 9 / figure_height,
         "WAVES planned timing measures internal consistency. Extraction settings are not quality decisions.",
         fontsize=8,
         color="#444444",
@@ -434,6 +516,8 @@ def _build_figure(
     renderer = figure.canvas.get_renderer()
     available_width = figure.bbox.width * (0.98 - 0.11)
     for artist in figure.texts:
+        if artist is audit_artist:
+            continue
         original = " ".join(artist.get_text().split())
         width = max(1, len(original))
         while True:
@@ -464,6 +548,7 @@ def render_stem(
     *,
     max_waveform_points: int = 4000,
     protected_inputs: list[Path] | None = None,
+    filter_config: FilterConfig | None = None,
 ) -> dict:
     """Export PNG/SVG diagnostics without inference or changing the report/cache.
 
@@ -477,6 +562,8 @@ def render_stem(
         or max_waveform_points < 1
     ):
         raise ValueError("max_waveform_points must be a positive integer")
+    if filter_config is not None and not isinstance(filter_config, FilterConfig):
+        raise ValueError("filter_config must be a FilterConfig or None")
     output = Path(output)
     format_name = output.suffix.lower().lstrip(".")
     if format_name not in {"png", "svg"}:
@@ -485,6 +572,8 @@ def render_stem(
     protected.extend(_provenance_paths(stem.provenance))
     protected.extend(_provenance_paths(report.get("provenance", {})))
     protected.extend(_provenance_paths(mapping.provenance))
+    if filter_config is not None:
+        protected.extend(_provenance_paths(filter_config.provenance))
     if stem.audio_path is not None:
         protected.append(Path(stem.audio_path))
     if prediction is not None and prediction.metadata.get("audio_path"):
@@ -494,7 +583,9 @@ def render_stem(
         if not source.is_absolute() and cache is not None:
             protected.append(Path(cache).parent / source)
     preflight_outputs([output], protected)
-    curve_status, curve_reason = _validate_report(stem, prediction, report, mapping, config)
+    curve_status, curve_reason = _validate_report(
+        stem, prediction, report, mapping, config, filter_config
+    )
     waveform, envelope = _waveform(stem.audio_path, max_waveform_points)
     old_digest = (report.get("cache_validation") or {}).get("current_audio_sha256")
     if waveform.get("audio_sha256") and old_digest and waveform["audio_sha256"] != old_digest:
@@ -521,5 +612,5 @@ def render_stem(
         "reference_status": report["reference"].get("status"),
         "reference_origin": report["reference"].get("origin"),
         "evaluation_status": report["evaluation_status"],
-        "decision": None,
+        "decision": report.get("decision"),
     }
