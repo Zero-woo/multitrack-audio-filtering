@@ -3,14 +3,40 @@
 WAVES가 생성한 stem을 frozen AudioSet-Strong SED 모델로 검사하는 독립적인 후처리 프로젝트입니다.
 WAVES 생성 파이프라인을 수정하거나 모델을 학습하지 않습니다.
 
-현재 **Phase 1~4: frozen 추론, WAVES metadata/mapping, 이벤트 추출과 역할별 metric/report**를 구현했습니다.
+현재 **Phase 1~5: frozen 추론, metadata/mapping, 역할별 평가, batch inference와 시각화**를 구현했습니다.
 WAVES의 planned support와 SED 출력 비교는 내부 consistency 검사이며,
 실제 영상과의 동기화를 입증하지 않습니다.
 
 구조 분석, 확인된 metadata 누락, 단계별 계획은 [분석 문서](docs/phase1-analysis.md),
 추론 검증은 [Phase 2 검증 기록](docs/phase2-validation.md),
 metadata/mapping 사용법은 [Phase 3 문서](docs/phase3-validation.md),
-cache 기반 평가와 측정 단위는 [Phase 4 문서](docs/phase4-validation.md)에 있습니다.
+cache 기반 평가와 측정 단위는 [Phase 4 문서](docs/phase4-validation.md),
+batch/시각화 사용법은 [Phase 5 문서](docs/phase5-validation.md)에 있습니다.
+
+## Batch와 시간축 그림 (Phase 5)
+
+여러 stem을 처리할 때는 정규화 manifest를 `batch-infer`에 전달합니다. 하나의 frozen 모델로
+차례대로 추론하고, 일치하는 cache는 재사용합니다. 일부 stem이 실패해도 나머지를 계속 처리하며
+`batch-status.json`에 사유를 남깁니다. 성공한 cache만 `prediction-index.json`에 연결됩니다.
+
+```powershell
+# 그림이 필요할 때 선택 설치. Batch cache 재사용/평가는 NumPy만으로 가능합니다.
+uv pip install --python .venv/Scripts/python.exe -e ".[visualization]"
+
+# stems.json과 mapping 경로는 자신의 실제 입력으로 바꿉니다.
+.venv/Scripts/python.exe -m waves_sed batch-infer --stems outputs/stems.json --output-dir outputs/batch
+.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/stems.json --predictions outputs/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/reports
+.venv/Scripts/python.exe -m waves_sed visualize --stems outputs/stems.json --predictions outputs/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/visuals
+```
+
+`outputs/visuals/index.html`에서 stem별 그림을 확인합니다. PNG 기본 출력에
+`--format svg`를 사용하면 SVG를 저장하고, `--stem-id "실제 ID"`로 하나만 선택할 수 있습니다.
+원본 파형의 min/max, expected support, raw/median target 확률과 detected 구간이 같은 시간축에
+표시됩니다. 누락되거나 모호한 자료는 그림에도 명시하며 확률 0이나 정상 판정으로 대체하지 않습니다.
+
+Batch는 matching cache만 재사용하고, 기존 cache가 손상되거나 입력/모델이 다르면 충돌로
+남깁니다. `--overwrite`를 명시하면 cache를 새로 추론합니다. 실패가 하나라도 있으면 종료 코드는
+1이며 나머지 성공 결과는 보존됩니다. 원본 audio와 입력 metadata는 덮어쓰지 않습니다.
 
 ## Cache 기반 시간 평가 (Phase 4)
 
@@ -166,9 +192,9 @@ candidate ID로 조인합니다. 특히 relabel, role 변경, merge가 있으면
 1. WAVES 산출물과 의존성 조사
 2. ATST-F Strong checkpoint 로딩, frozen inference, raw frame probability 저장
 3. WAVES metadata adapter, ontology 및 명시적 source mapping
-4. 역할별 temporal metric과 JSON/CSV report (여기까지 완료)
-5. 시각화와 batch 처리 (다음 단계)
-6. controlled corruption 평가
+4. 역할별 temporal metric과 JSON/CSV report
+5. 시각화와 batch 처리 (여기까지 완료)
+6. controlled corruption 평가 (다음 단계)
 7. calibration 후 설정에 따른 PASS / REVIEW / FAIL 판단
 
 모델·오디오·추론 출력은 Git에 넣지 않습니다. 주요 작업 단위마다 로컬 커밋을 남깁니다.
