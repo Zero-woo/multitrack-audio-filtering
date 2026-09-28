@@ -3,7 +3,7 @@
 WAVES가 생성한 stem을 frozen AudioSet-Strong SED 모델로 검사하는 독립적인 후처리 프로젝트입니다.
 WAVES 생성 파이프라인을 수정하거나 모델을 학습하지 않습니다.
 
-현재 **Phase 1~5: frozen 추론, metadata/mapping, 역할별 평가, batch inference와 시각화**를 구현했습니다.
+현재 **Phase 1~6: frozen 추론, metadata/mapping, 역할별 평가, batch/시각화와 controlled corruption 평가**를 구현했습니다.
 WAVES의 planned support와 SED 출력 비교는 내부 consistency 검사이며,
 실제 영상과의 동기화를 입증하지 않습니다.
 
@@ -11,7 +11,27 @@ WAVES의 planned support와 SED 출력 비교는 내부 consistency 검사이며
 추론 검증은 [Phase 2 검증 기록](docs/phase2-validation.md),
 metadata/mapping 사용법은 [Phase 3 문서](docs/phase3-validation.md),
 cache 기반 평가와 측정 단위는 [Phase 4 문서](docs/phase4-validation.md),
-batch/시각화 사용법은 [Phase 5 문서](docs/phase5-validation.md)에 있습니다.
+batch/시각화 사용법은 [Phase 5 문서](docs/phase5-validation.md),
+파형 변형과 조작 전후 비교는 [Phase 6 문서](docs/phase6-validation.md)에 있습니다.
+
+## Controlled corruption (Phase 6)
+
+원본 대조군을 보존하고 시간 이동, 구간 삭제/복제, 길이 단축/반복 연장 WAV를 만듭니다.
+각 변형은 독립적으로 생성되며 expected support는 그대로 유지합니다. 예제에는
++100/200/500/1000ms 이동이 포함됩니다. 구간 편집 예제는 대상 음원에 맞게 바꿉니다.
+
+```powershell
+uv pip install --python .venv/Scripts/python.exe -e ".[corruption]"
+.venv/Scripts/python.exe -m waves_sed corrupt --stems outputs/stems.json --stem-id "실제 stem ID" --config configs/corruption.example.json --output-dir outputs/corruption/experiment
+.venv/Scripts/python.exe -m waves_sed batch-infer --stems outputs/corruption/experiment/stems.json --output-dir outputs/corruption/batch
+.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/corruption/experiment/stems.json --predictions outputs/corruption/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/corruption/reports
+.venv/Scripts/python.exe -m waves_sed compare-corruptions --experiment outputs/corruption/experiment/experiment.json --report outputs/corruption/reports/dataset.json --output-dir outputs/corruption/comparison
+```
+
+`comparison.json/csv`에 metric 차이와 검출 구간 변화를 남깁니다. 비교에는 추론이나 오디오
+라이브러리가 필요하지 않습니다. 기존 실험 파일은 덮어쓰지 않으므로 생성에는 새 출력 경로를
+사용합니다. 원본 길이/채널/샘플레이트를 유지하며, 경계 손실과 중첩을 기록합니다.
+구간 복제가 실제 extra event 검출을 보장하지는 않습니다. [처리 정책과 실제 검증 결과](docs/phase6-validation.md)를 확인하세요.
 
 ## Batch와 시간축 그림 (Phase 5)
 
@@ -193,8 +213,8 @@ candidate ID로 조인합니다. 특히 relabel, role 변경, merge가 있으면
 2. ATST-F Strong checkpoint 로딩, frozen inference, raw frame probability 저장
 3. WAVES metadata adapter, ontology 및 명시적 source mapping
 4. 역할별 temporal metric과 JSON/CSV report
-5. 시각화와 batch 처리 (여기까지 완료)
-6. controlled corruption 평가 (다음 단계)
-7. calibration 후 설정에 따른 PASS / REVIEW / FAIL 판단
+5. 시각화와 batch 처리
+6. controlled corruption 평가 (여기까지 완료)
+7. calibration 후 설정에 따른 PASS / REVIEW / FAIL 판단 (다음 단계)
 
 모델·오디오·추론 출력은 Git에 넣지 않습니다. 주요 작업 단위마다 로컬 커밋을 남깁니다.

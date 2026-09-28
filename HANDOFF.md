@@ -1,15 +1,16 @@
 # 다음 Codex 세션 인수인계
 
-최종 갱신: 2026-09-28. **Phase 1~5: frozen 추론, metadata/mapping, 역할별 평가,
-batch inference와 PNG/SVG/HTML 시각화를 완료했다.**
-토큰 소진 후 저장된 변경을 이어 받아 전체 테스트·실제 2개 음원 batch·cache 재사용·wheel 검증을 마무리했다.
-다음 단계는 Phase 6의 controlled corruption evaluation이다. 품질 판정 정책은 Phase 7이다.
+최종 갱신: 2026-09-28. **Phase 1~6: frozen 추론, metadata/mapping, 역할별 평가,
+batch/시각화와 controlled corruption evaluation을 완료했다.**
+토큰 소진 후 저장된 변경을 이어 받아 Phase 6 파형 생성·paired report·실제 9개 추론과 검증을 마무리했다.
+다음 단계는 Phase 7의 설정 기반 품질 판정 정책이다. 현재 `decision=null`이다.
 
 ## 1. 다음 세션에서 가장 먼저 확인할 것
 
 1. `git status --short`, `git log -6 --oneline`과 이 문서를 읽는다.
 2. `docs/phase1-analysis.md`에서 실제 WAVES 필드·merge/role 변경 문제를 확인한다.
-3. `docs/phase5-validation.md`에서 batch/plot 계약과 새 CLI, 선택 의존성, 실제 검증을 확인한다.
+3. `docs/phase6-validation.md`에서 corruption 정책, 새 CLI와 실제 검증 한계를 확인한다.
+   `docs/phase5-validation.md`에서 batch/plot 계약과 선택 의존성을 확인한다.
    `docs/phase4-validation.md`에서 metric 단위/빈값/집계/해시 검증과 실행 방법을 확인한다.
    `docs/phase3-validation.md`는 metadata/ontology 계약, `docs/phase2-validation.md`는 추론 기록이다.
 4. `C:\WAVES`에 실제 run/WAV가 추가되었는지 확인한다. 현재 checkout에는 WAV가 없다.
@@ -26,7 +27,7 @@ batch inference와 PNG/SVG/HTML 시각화를 완료했다.**
 - 전체 목표는 독립 pretrained SED로 WAVES stem의 의미·시간 일관성을 측정하는 후처리 도구다.
   생성 모델 수정, 학습/fine-tuning, reference WAV 유사도 비교는 하지 않는다.
 - 먼저 구조를 분석·설명하고 최소 단일-WAV prototype을 검증하라는 요청에 따라 Phase 1~2를 진행했다.
-- 이어서 사용자가 다음 단계를 요청하여 Phase 3~5를 구현했다. Phase 6~7은 아직 구현하지 않았다.
+- 이어서 사용자가 다음 단계를 요청하여 Phase 3~6을 구현했다. Phase 7은 아직 구현하지 않았다.
 - WAVES planned support는 영상의 정답 시간이 아니다. 내부 consistency와 영상 동기화는 구분한다.
 - 사용자 요청대로 의미 있는 작업 단위마다 로컬 commit을 남겼다. Push는 하지 않았다.
 
@@ -71,7 +72,15 @@ batch inference와 PNG/SVG/HTML 시각화를 완료했다.**
 - 누락·모호함을 그림에 명시하고 원본·cache·config·report mismatch를 거부한다.
   긴 제목과 한글 font fallback, 전체 출력 preflight, atomic export를 지원한다.
 
-**미구현 후속 기능:** controlled corruption, PASS/REVIEW/FAIL 정책. HTML은 static gallery이며
+- `corrupt`: 원본 길이/샘플레이트/채널을 유지하는 shift/remove/duplicate/shorten/extend WAV 생성.
+  원본 대조군과 각 독립 변형의 manifest/hash/application을 저장하고 expected/reference는 유지한다.
+- `compare-corruptions`: 실험 manifest에 연결된 동일 설정/모델/reference 보고서의 metric 차이,
+  검출 개수·support IoU·단일 event displacement, 유효 기여 수가 있는 operation별 요약.
+- 변형 생성 실패·파형 변화 없음·누락·불일치는 unavailable/null로 보고한다. NumPy만으로 비교 가능.
+- 실제 공개 WAV에서 대조군+8변형을 한 모델로 추론하고 paired JSON/CSV와 9개 PNG/HTML을 생성했다.
+  Synthetic 전체 길이 reference임을 명시하며 영상 annotation/인식 성능으로 해석하지 않는다.
+
+**미구현 후속 기능:** PASS/REVIEW/FAIL 정책. HTML은 static gallery이며
 브라우저에서 threshold를 바꾸는 대화형 편집기는 구현하지 않았다.
 
 ## 4. 파일별 구현/변경 내용
@@ -160,7 +169,23 @@ Phase 5 추가/수정 파일:
 | `tests/test_phase5_cli.py` | 50 tests: offline CLI, 통합 결과, HTML escaping, 선택·오류·원본/hardlink 보호 |
 | `docs/phase5-validation.md`, `README.md`, `HANDOFF.md` | 단계별 명령, 실제 검증, 제약, 다음 단계 |
 
-Matplotlib/soundfile은 그림에만 필요하다. 모델 없이 평가할 기본 dependency는 계속 NumPy 하나다.
+Matplotlib은 그림에 필요하다. soundfile은 그림/파형 편집에 쓰며 기본 dependency는 계속 NumPy 하나다.
+
+Phase 6 추가/수정 파일:
+
+| 파일 | 구현/변경 |
+| --- | --- |
+| `src/waves_sed/corruption.py` | 엄격한 설정/spec, 정확한 sample 반올림, 5가지 파형 조작, crop/overlap/no-effect 기록 |
+| `src/waves_sed/corruption_experiment.py` | 원본 보존 control, 독립 FLOAT WAV, immutable 실험 manifest, 전체 입력/hardlink 보호 |
+| `src/waves_sed/corruption_comparison.py` | manifest/report/hash/context 연결 검증, 역할별 delta·검출 변화, unavailable·분모, JSON/CSV |
+| `src/waves_sed/phase6.py`, `src/waves_sed/cli.py` | corrupt/compare-corruptions CLI, strict JSON, input 변경 감지, lazy optional dependency |
+| `configs/corruption.example.json` | +100/200/500/1000ms 및 구간 삭제/복제/길이 변경 8개 예제 |
+| `pyproject.toml` | corruption extra: soundfile==0.13.1 |
+| `tests/test_corruption.py` | 108개 sample 정확도/비정상 설정/거대한 이동·길이/원본 보존 검사 |
+| `tests/test_corruption_comparison.py` | 38개 synthetic oracle/설정·hash 불일치/빈값·분모/원본 identity 검사 |
+| `tests/test_phase6_cli.py` | 49개 생성→평가→비교, 원본·미선택·hardlink 보호, import 격리/입력 변경 검사 |
+| `scripts/verify_corruption_pipeline.py` | synthetic reference를 명시하는 실제 모델 공개 음원 검증, report/plot/비교 재현 |
+| `docs/phase6-validation.md`, `README.md`, `HANDOFF.md` | 조작/비교 정책, 실행법, 실제 관측 결과와 한계, 다음 작업 |
 
 Vendor 루트: `src/waves_sed/_vendor/pretrained_sed/`.
 
@@ -203,6 +228,8 @@ Resources 루트: `src/waves_sed/resources/`.
 - Phase 3 최종 전체 실행: **226 passed, 1 skipped**, 9.83초. skip은 환경변수 없는 실제 모델 test다.
 - Phase 4 최종 전체 실행: **515 passed, 1 skipped**, 13.69초. Ruff lint/format 및 wheel build 통과.
 - Phase 5 최종 전체 실행: **647 passed, 1 skipped**, 54.62초. Ruff lint/format 및 wheel build 통과.
+- Phase 6 최종 전체 실행: **842 passed, 1 skipped**, 69.67초. Phase 6 신규 195개 통과.
+  Ruff lint/format, diff check, wheel build 및 독립 환경 검증 통과.
 - audioread의 Python3.11 `aifc/audioop/sunau` deprecation warning3개만 있다.
 - Ruff check/format check, dependency check, CPU requirements dry-run, wheel build 통과.
 - Phase 3 최종 코드로 wheel을 빌드했다. 별도 `.cache/phase3-package-smoke` 환경에 wheel과
@@ -246,6 +273,24 @@ Phase 5 실제 자료 검증:
 - `.cache/phase5-package-smoke`: wheel+NumPy만으로 batch cache hit 확인 후 visualization extra만
   추가해 `outputs/phase5/wheel-visuals/`의 SVG 2개 생성. torch/torchaudio/librosa는 설치하지 않았다.
 
+Phase 6 실제 자료 검증:
+- `outputs/phase6/metro-demo/inputs/`: 명시적인 synthetic 전체 길이 support metadata, Subway mapping,
+  threshold0.2/median1/min_duration0. `origin=synthetic_full_track_demonstration`, status=demonstration.
+- `experiment/`: 원본 control과 8개 변형의 WAV/manifest. 원본 SHA 불변, 조작 전후 동일 reference.
+- `batch/`: 실제 CPU inferred9/cached0/failed0, 모델 초기화1, 45.356초. 모든 cache는938×447.
+- `reports/dataset.json`, `comparison/comparison.json`과 CSV: 8쌍 비교 성공.
+  100/200/500/1000ms 이동에 대한 관측 onset 변화는80/160/480/1000ms.
+  Remove/shorten은 검출을 쪼개 개수+2/+1, duplicate는 중첩되어 구간 변화 없음.
+  이는 단일 공개 clip의 반응이며 실제 품질·영상 annotation·일반 민감도 점수가 아니다.
+- `visuals/index.html`: 9개 PNG와 JSON index. 500ms shift 그림을 직접 확인했다.
+- 일반 evaluate CLI는 WAVES reference만 사용하므로 synthetic origin을 승인하지 않는다.
+  이 demo 재평가는 `scripts/verify_corruption_pipeline.py`의 명시적 reference API로 한다.
+- `.cache/phase6-package-smoke`: wheel+NumPy만으로 8쌍 재비교, 원래 comparison과 동일 확인.
+  이후 corruption extra(soundfile)만 추가하여 8개 WAV 생성. torch/torchaudio/librosa/matplotlib 없음.
+  8개 변형의 디코딩된 sample/application 동일 확인. PEAK chunk 일부 bytes는 재생성 시 달라졌으므로
+  experiment ID와 WAV hash의 의미를 구분한다. Cache identity는 실제 파일 bytes의 SHA다.
+- `outputs/phase6/wheel-comparison`, `wheel-experiment`: 독립 설치 검증 산출물.
+
 ## 6. 환경과 Git
 
 Windows / Python3.11.9 / i3-1315U / RAM약16GB / CUDA없음.
@@ -269,7 +314,9 @@ Git commit:
 - `79a315e`: Phase 4 문서/인수인계
 - `287277c`: resumable batch inference와 단일 backend
 - `f271193`: PNG/SVG evidence와 batch/visualize CLI, HTML gallery
-- Phase 5 문서 commit이 뒤에 이어진다. 정확한 hash는 `git log`를 확인한다.
+- `03cd970`: Phase 5 문서/인수인계
+- `ebde56e`: controlled waveform experiment, paired evaluation, CLI/테스트/실제 검증 스크립트
+- Phase 6 문서 commit이 뒤에 이어진다. 정확한 hash는 `git log`를 확인한다.
 
 로컬 Git 제외 자산:
 - `.cache/PretrainedSED`: 공식 repository clone, revision
@@ -287,10 +334,10 @@ Git commit:
 
 ## 7. 미해결 제약과 다음 작업 순서
 
-Phase 1~5에서 발견한 코드 오류는 수정했다. 남은 제약:
+Phase 1~6에서 발견한 코드 오류는 수정했다. 남은 제약:
 - 실제 WAVES WAV 없음. 향후 실제 stem 검증은 materialized run 또는 명시적인 경로 매핑이 필요.
 - CUDA/Linux/다른 Python 버전 실행은 미검증.
-- Phase 6~7 기능은 아직 미구현. 현재 PASS/FAIL을 내리지 않음.
+- Phase 7 기능은 아직 미구현. 현재 PASS/FAIL을 내리지 않음.
 - 공식 ontology에 없는 31개 모델 ID는 hierarchy가 알려져 있지 않음. 직접 mapping은 가능하나 descendant 확장 금지.
 - 실제 reference annotation이나 threshold calibration은 없음. WAVES 계획만으로 영상 동기화를 입증하지 못함.
 - Report 각 파일은 atomic replace지만 여러 파일 전체를 한 transaction으로 쓰는 것은 아님.
@@ -298,18 +345,19 @@ Phase 1~5에서 발견한 코드 오류는 수정했다. 남은 제약:
 
 후속 순서:
 1. 사용자가 새로 요청하는 범위와 현재 Git 상태 확인.
-2. Phase 6 corruption 설계: 원본 WAV를 보존하며 +100/+200/+500/+1000ms shift,
-   missing/extra event, shortened/extended duration 변형과 provenance manifest를 만든다.
-3. 선택한 구간과 sample 경계 변환, 잘라내기/복제/삽입/clip 끝의 처리 정책을 먼저 명시한다.
-   기대 시간 기준을 변형된 검출에 맞춰 자동 변경하면 timing 오류를 숨기므로 분리한다.
-4. 변형 WAV는 새 hash로 inference가 필요하다. 기존 batch-infer→evaluate→visualize를 재사용한다.
-   원본과 변형의 class mapping/설정/reference를 고정하고 변화량·missing/extra 민감도를 보고한다.
-5. 먼저 synthetic 신호/구간으로 변형의 sample 정확성과 metric 기본 민감도를 검증한다.
-   실제 SED 출력은 threshold와 인식 한계 때문에 조작량과 항상 일치하지 않음을 구분한다.
-6. 실제 WAVES run이 추가되면 소수 stem에 적용한다. 없으면 공개 예제와 명시적 synthetic fixture로
-   검증하고 실제 품질/영상 동기화 성능으로 일반화하지 않는다.
-7. 이후 Phase 7 optional decision과 threshold calibration 설정을 구현한다.
-   자세한 기준은 원문과 `docs/phase1-analysis.md` 참조.
+2. 원문 15절 및 Phase 7 요구를 확인한다. `FilterDecision` PASS/REVIEW/FAIL/UNSUPPORTED와
+   역할별 threshold config를 설계하되 기본 null이면 판정에 쓰지 않는다.
+3. 평가 metric과 optional decision을 분리한다. 미지원 mapping, 누락/모호한 reference,
+   cache 오류, 필요한 metric이 null인 경우를 정상 판정으로 오해하지 않도록 상태 정책을 정한다.
+4. `onset.min_event_recall/max_mean_onset_error_ms`, `span.min_tiou`,
+   `ambience.min_occupancy`처럼 명시한 조건만 사용한다. REVIEW/FAIL 경계와 어떤 조건이
+   판정에 기여했는지 기록한다. 근거 없는 calibrated default를 만들지 않는다.
+5. 기존 JSON/CSV/시각화와 연결하고, threshold 없는 기존 동작과 raw cache 재사용을 유지한다.
+   Synthetic report로 경계값·null·역할·미지원·복수 조건을 검증한다.
+6. 실제 WAVES run/WAV가 추가되면 소수 stem의 선택 구간에 Phase 6을 적용한다.
+   단일 공개 demo로 실용 threshold나 perceptual quality를 보정하지 않는다.
+7. 실행법/테스트/한계를 기록하고 의미 있는 단위로 commit한다. Human evaluation platform이나
+   학습은 구현하지 않는다. 사용자 요청에 따라 단계별로 진행한다.
 
 ## 8. 중요한 코드 구조와 주의사항
 
@@ -355,6 +403,15 @@ Phase 1~5에서 발견한 코드 오류는 수정했다. 남은 제약:
 - 파형은 native sample rate/전 채널 min/max envelope이다. stereo 평균이나 stride 샘플링이 아니다.
   max_waveform_points는 표시 bin 수이며 모든 sample을 bounded block으로 읽어 impulse를 보존한다.
 - HTML은 정적 local gallery이며 외부 CDN/모델 호출 없이 PNG/SVG를 링크한다. 제목은 HTML escape한다.
+- Corruption은 원본 native sample frame을 고정한다. 빈 곳은0, clip 밖 삽입은crop, 중첩은덧셈이다.
+  Shorten은 prefix만 남기고 extend는 반복한다. Fade/time stretch/normalization/clipping은 없다.
+  float32 decode/FLOAT WAV이며 고정확도 원본의 float32 변환 한계와 boundary artifact가 존재한다.
+- Expected/reference/description/role은 변형 전후 고정한다. 원본 metadata는 provenance.corruption에
+  nested 보존하고 현재 변형 raw_final_stem hash는 새 WAV로 바꾼다. 변형은 누적하지 않는다.
+- `audio_changed=false`는 민감도 비교에서 제외한다. 구간 제거/복제는 semantic missing/extra를
+  보장하지 않는다. 실제 파형 조작과 관측 SED 반응을 별도 필드로 남긴다.
+- Compare는 저장된 report와 manifest hash/context를 비교하며 현재 WAV/NPZ를 다시 읽지 않는다.
+  현재 bytes 검증에는 evaluate를 다시 실행한다. 생성 manifest는 기존 파일을 덮어쓰지 않는다.
 - mapping의 supported는 alias/class column 연결 성공이다. 검출 여부나 품질 점수가 아니다.
 - `reference_status=planned`도 실제 영상의 정답을 뜻하지 않는다. 이 archive의 ambiguous43개를
   그대로 정답으로 간주하지 않는다. merged child 시간은 parent와 합집합으로 만들지 않았다.
@@ -368,7 +425,10 @@ Phase 1~5에서 발견한 코드 오류는 수정했다. 남은 제약:
 cd C:\multitrack-audio-filtering
 git status --short
 git log -6 --oneline
-uv pip install --python .venv/Scripts/python.exe -e ".[visualization]"
+uv pip install --python .venv/Scripts/python.exe -e ".[visualization,corruption]"
+.venv/Scripts/python.exe -m waves_sed compare-corruptions --experiment outputs/phase6/metro-demo/experiment/experiment.json --report outputs/phase6/metro-demo/reports/dataset.json --output-dir outputs/phase6/metro-demo/comparison
+# 실제 추론까지 재현할 때만 새 output-dir로 실행:
+# .venv/Scripts/python.exe scripts/verify_corruption_pipeline.py --audio .cache/PretrainedSED/test_files/752547__iscence__milan_metro_coming_in_station.wav --class-id /m/0195fx --corruptions configs/corruption.example.json --output-dir outputs/phase6/metro-demo-new
 .venv/Scripts/python.exe -m waves_sed batch-infer --stems outputs/phase5/demo-inputs/stems.json --output-dir outputs/phase5/demo-batch
 .venv/Scripts/python.exe -m waves_sed visualize --stems outputs/phase5/demo-inputs/stems.json --predictions outputs/phase5/demo-batch/prediction-index.json --mappings outputs/phase5/demo-inputs/mapping.json --config outputs/phase5/demo-inputs/evaluation.json --output-dir outputs/phase5/demo-visuals
 .venv/Scripts/python.exe -m waves_sed inspect outputs/predictions/metro.npz
