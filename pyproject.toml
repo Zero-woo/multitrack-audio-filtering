@@ -16,6 +16,7 @@ atst = [
 ]
 dev = ["pytest>=8,<9", "ruff>=0.11,<1"]
 visualization = ["matplotlib>=3.9,<4", "soundfile==0.13.1"]
+corruption = ["soundfile==0.13.1"]
 
 [project.scripts]
 waves-sed = "waves_sed.cli:main"

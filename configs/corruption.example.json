@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "variants": [
+    {"id": "shift_100ms", "operation": "shift", "shift_seconds": 0.1},
+    {"id": "shift_200ms", "operation": "shift", "shift_seconds": 0.2},
+    {"id": "shift_500ms", "operation": "shift", "shift_seconds": 0.5},
+    {"id": "shift_1000ms", "operation": "shift", "shift_seconds": 1.0},
+    {"id": "remove_example", "operation": "remove", "interval": [0.5, 1.0]},
+    {"id": "duplicate_example", "operation": "duplicate", "interval": [0.5, 1.0], "destination_seconds": 2.0},
+    {"id": "shorten_example", "operation": "shorten", "interval": [0.5, 1.0], "duration_seconds": 0.25},
+    {"id": "extend_example", "operation": "extend", "interval": [0.5, 1.0], "duration_seconds": 0.75}
+  ]
+}
