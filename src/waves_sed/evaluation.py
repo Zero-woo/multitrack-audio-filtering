@@ -15,6 +15,20 @@ from waves_sed.provenance import sha256
 from waves_sed.temporal_metrics import ambience_metrics, onset_metrics, span_metrics
 from waves_sed.temporal_reference import TemporalReference, WavesPlannedReference
 
+
+def _with_decision(report: dict, filter_config) -> dict:
+    """Attach an optional policy audit after all metric/availability work is done."""
+    if filter_config is not None:
+        from waves_sed.decision import decide
+
+        audit = decide(report, filter_config)
+        report["decision"] = audit["decision"]
+        report["decision_details"] = audit
+        report["provenance"]["filter_config"] = filter_config.to_dict()
+        report["provenance"]["filter_config_provenance"] = filter_config.provenance
+    return report
+
+
 METRIC_CONVENTIONS = {
     "implementation_version": 1,
     "intervals": "half-open [start, end), seconds",
@@ -197,6 +211,7 @@ def evaluate_stem(
     reference: TemporalReference | None = None,
     prediction_path: Path | None = None,
     prediction_error: str | None = None,
+    filter_config=None,
 ) -> dict:
     """Return a self-contained stem report; unavailable evidence stays null.
 
@@ -204,6 +219,11 @@ def evaluate_stem(
     unusable. Such a row is excluded from metric aggregates. No model is invoked.
     """
     config.validate()
+    if filter_config is not None:
+        from waves_sed.decision import FilterConfig
+
+        if not isinstance(filter_config, FilterConfig):
+            raise ValueError("filter_config must be a FilterConfig or None")
     if prediction is not None:
         prediction.validate()
     path = Path(prediction_path).resolve() if prediction_path is not None else None
@@ -265,7 +285,7 @@ def evaluate_stem(
         )
         if prediction_error:
             report["prediction_error"] = prediction_error
-        return report
+        return _with_decision(report, filter_config)
     report["provenance"]["prediction"] = {
         "path": str(path) if path is not None else None,
         "sha256": sha256(path) if path is not None else None,
@@ -280,7 +300,7 @@ def evaluate_stem(
     observation_reasons = _observation_reasons(prediction)
     reasons.extend(observation_reasons)
     if not identity["verified"] or observation_reasons or resolution.status != "supported":
-        return report
+        return _with_decision(report, filter_config)
 
     target = aggregate_target(prediction, resolution)
     detected = extract_events(prediction, target, config.event)
@@ -300,7 +320,7 @@ def evaluate_stem(
     ):
         reasons.append("reference_outside_prediction")
     if reasons:
-        return report
+        return _with_decision(report, filter_config)
     if stem.role == "onset":
         metrics = onset_metrics(support.intervals, detected, config.onset_tolerance_seconds)
     elif stem.role == "span":
@@ -315,4 +335,4 @@ def evaluate_stem(
         )
     report["metrics"] = metrics
     report["evaluation_status"] = "evaluated"
-    return report
+    return _with_decision(report, filter_config)

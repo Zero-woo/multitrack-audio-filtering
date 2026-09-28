@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "filter": {
+    "onset": {
+      "min_event_recall": null,
+      "max_mean_onset_error_ms": null
+    },
+    "span": {
+      "min_tiou": null
+    },
+    "ambience": {
+      "min_occupancy": null
+    }
+  }
+}

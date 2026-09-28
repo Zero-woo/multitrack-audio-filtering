@@ -26,6 +26,9 @@ def add_commands(commands) -> None:
     )
     evaluate.add_argument("--mappings", required=True, type=Path)
     evaluate.add_argument("--config", required=True, type=Path)
+    evaluate.add_argument(
+        "--filter-config", type=Path, help="Optional explicit quality decision thresholds"
+    )
     evaluate.add_argument("--ontology", type=Path)
     evaluate.add_argument("--output-dir", required=True, type=Path)
 
@@ -102,6 +105,11 @@ def run(args) -> int:
     ontology = AudioSetOntology.load(args.ontology)
     mapping = ManualMapping.load(args.mappings, ontology)
     config = EvaluationConfig.load(args.config)
+    filter_config = None
+    if args.filter_config is not None:
+        from waves_sed.decision import FilterConfig
+
+        filter_config = FilterConfig.load(args.filter_config)
     input_paths = {
         "stems": args.stems,
         "predictions": args.predictions,
@@ -110,6 +118,8 @@ def run(args) -> int:
     }
     if args.ontology is not None:
         input_paths["ontology"] = args.ontology
+    if args.filter_config is not None:
+        input_paths["filter_config"] = args.filter_config
     protected = [*input_paths.values(), *index.values(), *_provenance_paths(stems)]
     records = []
     for stem in stems:
@@ -140,8 +150,14 @@ def run(args) -> int:
                 config,
                 prediction_path=cache_path,
                 prediction_error=error,
+                filter_config=filter_config,
             )
         )
+    if (
+        filter_config is not None
+        and sha256(args.filter_config) != filter_config.provenance["sha256"]
+    ):
+        raise ValueError("Filter config changed during evaluation; no reports were written")
     dataset = write_reports(
         records,
         args.output_dir,

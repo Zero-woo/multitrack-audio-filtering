@@ -88,8 +88,95 @@ def _number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def _decision_context(records: list[dict]) -> dict | None:
+    """Validate auditable stem decisions before counting them under a shared policy."""
+
+    def audit_payload(value: dict) -> str:
+        return json.dumps(
+            {key: item for key, item in value.items() if key != "config_provenance"},
+            sort_keys=True,
+            allow_nan=False,
+        )
+
+    contexts = {}
+    configured = False
+    assigned = False
+    for row in records:
+        details = row.get("decision_details")
+        provenance = row.get("provenance") or {}
+        if details is None:
+            if (
+                "decision_details" in row
+                or row.get("decision") is not None
+                or "filter_config" in provenance
+                or "filter_config_provenance" in provenance
+            ):
+                raise ValueError("A configured or assigned decision requires decision_details")
+            context = None
+        else:
+            from waves_sed.decision import FilterConfig, decide
+
+            if not isinstance(details, dict):
+                raise ValueError("decision_details must be an audit object")
+            config = FilterConfig.from_dict(details.get("config"))
+            expected = decide(row, config)
+            if type(details.get("implementation_version")) is not int:
+                raise ValueError("Decision implementation_version must be an integer")
+            if audit_payload(details) != audit_payload(expected):
+                raise ValueError("Decision audit does not match the configured decision engine")
+            if row.get("decision") != details["decision"]:
+                raise ValueError("Stem decision does not match decision_details")
+            if (
+                provenance.get("filter_config") != details["config"]
+                or provenance.get("filter_config_provenance") != details.get("config_provenance")
+                or not isinstance(details.get("config_provenance"), dict)
+            ):
+                raise ValueError("Decision audit does not match filter configuration provenance")
+            configured = True
+            assigned |= details["decision"] is not None
+            context = {
+                "config": details["config"],
+                "implementation_version": details["implementation_version"],
+            }
+        contexts[json.dumps(context, sort_keys=True, allow_nan=False)] = context
+    if assigned and len(contexts) > 1:
+        raise ValueError(
+            "Cannot aggregate assigned decisions with different filter policies or legacy "
+            "unconfigured records; report them separately"
+        )
+    if not configured:
+        return None
+    return (
+        next(iter(contexts.values()))
+        if len(contexts) == 1
+        else {"config": None, "implementation_version": None}
+    )
+
+
+def _decision_summary(records: list[dict], context: dict) -> dict:
+    """Count audited labels; an unassigned result is never converted to a quality label."""
+    labels = ("PASS", "REVIEW", "FAIL", "UNSUPPORTED")
+    return {
+        "counts": {
+            **{label: sum(row.get("decision") == label for row in records) for label in labels},
+            "unassigned": sum(row.get("decision") is None for row in records),
+        },
+        "reason_codes": _counts(
+            reason
+            for row in records
+            for reason in set((row.get("decision_details") or {}).get("reason_codes", []))
+        ),
+        "statuses": _counts(
+            (row.get("decision_details") or {}).get("status", "legacy_unconfigured")
+            for row in records
+        ),
+        **context,
+    }
+
+
 def summarize_records(records: list[dict]) -> dict:
     """Means have per-metric denominators; onset micro ratios use pooled counts."""
+    decision_context = _decision_context(records)
     context = _aggregation_context(records)
     roles = {}
     for role in sorted({row.get("role") or "unspecified" for row in records}):
@@ -121,6 +208,8 @@ def summarize_records(records: list[dict]) -> dict:
             "unavailable_count": len(rows) - len(evaluated),
             "metrics": metrics,
         }
+        if decision_context is not None:
+            role_summary["decision_summary"] = _decision_summary(rows, decision_context)
         if role == "onset":
             count_keys = (
                 "expected_event_count",
@@ -151,7 +240,7 @@ def summarize_records(records: list[dict]) -> dict:
             )
             role_summary["onset_micro"] = micro
         roles[role] = role_summary
-    return {
+    summary = {
         "stem_count": len(records),
         "clip_count": len({row["clip_key"] for row in records}),
         "evaluation_statuses": _counts(row["evaluation_status"] for row in records),
@@ -163,6 +252,9 @@ def summarize_records(records: list[dict]) -> dict:
         "aggregation_context": context,
         "decision": None,
     }
+    if decision_context is not None:
+        summary["decision_summary"] = _decision_summary(records, decision_context)
+    return summary
 
 
 def _json(value) -> str:
@@ -209,6 +301,18 @@ def _stem_csv_row(record: dict) -> dict:
     result["reference_origin"] = record["reference"].get("origin")
     result["reference_status"] = record["reference"]["status"]
     result["reference_usable"] = record["reference"].get("usable")
+    if "decision_details" in record:
+        details = record["decision_details"]
+        result.update(
+            {
+                "decision_status": details["status"],
+                "decision_reason_codes": details["reason_codes"],
+                "decision_checks": details["checks"],
+                "decision_config": details["config"],
+                "decision_config_provenance": details["config_provenance"],
+                "decision_implementation_version": details["implementation_version"],
+            }
+        )
     result.update(
         {
             f"metric_{key}": value
@@ -231,6 +335,10 @@ def _clip_csv_row(clip: dict) -> dict:
         "reason_codes": summary["reason_codes"],
         "decision": None,
     }
+    if "decision_summary" in summary:
+        result.update(
+            {f"decision_{key}": value for key, value in summary["decision_summary"].items()}
+        )
     for role, values in summary["roles"].items():
         for key in ("stem_count", "evaluated_count", "unavailable_count"):
             result[f"{role}_{key}"] = values[key]
@@ -239,6 +347,9 @@ def _clip_csv_row(clip: dict) -> dict:
             result[f"{role}_{key}_contributing_count"] = metric["contributing_count"]
         for key, value in values.get("onset_micro", {}).items():
             result[f"{role}_micro_{key}"] = value
+        if "decision_summary" in values:
+            result[f"{role}_decision_counts"] = values["decision_summary"]["counts"]
+            result[f"{role}_decision_reason_codes"] = values["decision_summary"]["reason_codes"]
     return result
 
 
@@ -340,6 +451,11 @@ def write_reports(
         },
         "decision": None,
     }
+    if "decision_summary" in dataset["summary"]:
+        dataset["aggregation_policy"]["decisions"] = (
+            "counts of audited stem decisions under one filter policy; null remains unassigned; "
+            "no clip or dataset quality decision"
+        )
     payloads = [(output_dir / stem_files[row["stem_id"]], _json(row)) for row in records]
     payloads.extend((output_dir / clip_files[clip["clip_key"]], _json(clip)) for clip in clips)
     payloads.extend(
