@@ -1,15 +1,35 @@
 # Phase 3: WAVES metadata와 명시적 AudioSet mapping
 
-검증일: 2026-09-27. Phase 3은 WAVES metadata 정규화, 실제 AudioSet ontology 읽기,
-수동 source mapping과 기존 raw 확률의 target aggregation을 구현한다.
-모델 추론을 다시 실행하지 않으며 event 추출·metric·filter 판단은 Phase 4 이후 범위다.
+검증 기준일: **2026-09-27**.
+
+Phase 3은 WAVES의 최종 stem과 생성 계획을 공통 metadata로 정규화하고, 최종 소리 설명을
+ATST-F의 실제 출력 클래스에 연결하는 단계이다. 공식 AudioSet ontology를 읽어 클래스
+관계를 확인하고, 명시적 수동 mapping으로 기존 raw 확률에서 목표 소리의 확률을 추출한다.
+
+모델 추론은 다시 실행하지 않는다. 이 단계의 출력은 [Phase 4](phase4-validation.md)의
+이벤트 추출·시간 지표 계산에 입력되며, 품질 판정은 [Phase 7](phase7-validation.md)의
+별도 정책이 담당한다. 문서의 테스트 개수와 frozen 자료 집계는 위 기준일의 기록이다.
+
+## 입출력과 코드 구성
+
+입력은 materialized WAVES metadata 또는 frozen finals/reports이며, 필요하면 음원 경로
+mapping과 source mapping을 함께 전달한다. 출력은 정규화된 stem JSON이다.
+`map-source` 명령은 설명과 클래스의 연결 결과를 반환하며, 기존 NPZ를 전달하면 시간별
+target 확률도 계산한다.
+
+| 모듈 | 책임 |
+| --- | --- |
+| `metadata.py` | `StemMetadata`와 정규화 JSON 계약 |
+| `adapters/waves.py` | final·candidate·선택 attempt 결합, 경로와 reference 상태 기록 |
+| `ontology.py` | 공식 ontology 검증과 계층 탐색 |
+| `mapping.py` | 명시적 description alias와 클래스 연결, target 확률 집계 |
+| `phase3.py` | `adapt-waves`, `map-source` CLI |
+
+NumPy와 설치된 패키지만으로 실행할 수 있다. Phase 2의 선택적 추론 의존성은 요구하지 않는다.
 
 ## 실행 방법
 
-기존 `.venv`를 그대로 사용한다. 새 의존성은 추가하지 않았다.
-NumPy와 설치된 패키지만으로 모든 Phase 3 명령을 실행할 수 있다.
-
-현재 checkout의 실제 frozen 자료 전체를 정규화하는 명령:
+검증에 사용한 WAVES frozen 자료 전체를 정규화하는 명령은 다음과 같다.
 
 ```powershell
 cd C:\multitrack-audio-filtering
@@ -29,7 +49,7 @@ description/support 등의 정보는 누락 상태로 남긴다. 이웃 파일�
 `--mappings`를 생략하면 정규화만 한다. `--output`을 생략하면 JSON을 stdout에 출력한다.
 
 Frozen 자료의 실제 음원 파일을 연결하려면 `--audio-paths paths.json`을 추가한다.
-이 파일은 다음과 같은 **명시적 audio_id → path 객체**다. 경로는 사용자가 실제 파일로 바꾼다.
+이 파일은 다음과 같은 **명시적 audio_id → path 객체**다. 예제 경로는 실제 파일 위치로 대체한다.
 
 ```json
 {
@@ -43,7 +63,7 @@ Frozen 자료의 실제 음원 파일을 연결하려면 `--audio-paths paths.js
 
 ## 정규화 계약과 시간 기준
 
-`StemMetadata`는 `metadata.py`, adapter는 `adapters/waves.py`에 있다.
+정규화 결과의 주요 필드는 다음과 같다.
 
 | 필드 | 의미 |
 | --- | --- |
@@ -72,8 +92,11 @@ Parent/child의 원래 구간은 provenance에 남아 있다.
 - `missing`: 사용할 계획 구간이 없거나 명시적인 목록이 비어 있음.
 
 이 상태는 품질 PASS/REVIEW/FAIL이 아니다. `planned`도 실제 영상의 정답 시간이 아니다.
-Phase 4에서는 `ambiguous`인 기준을 자동으로 확정된 reference처럼 쓰지 말고,
-명시적인 정책 또는 외부 시간 기준을 요구해야 한다. 누락된 구간을 전체 clip으로 채우지 않는다.
+Phase 4는 기본적으로 `ambiguous`인 기준을 시간 지표 계산에 사용하지 않는다. 명시적인
+설정으로 사용을 허용할 수 있으나, Phase 7에서 해당 역할의 판정 기준을 활성화하면
+reference의 모호함을 근거로 `REVIEW`를 반환한다. 누락된 구간을 전체 clip으로 채우지 않는다.
+실제 영상과의 동기화 검증에는
+독립적인 외부 시간 기준이 필요하다.
 
 입력의 duplicate ID/key, cross-clip 조인, 충돌하는 계획, 비유한/음수/역전 구간과 잘못된
 선택 attempt는 오류로 처리한다. 정렬되지 않은 구간을 자동 정렬하거나 병합하지 않는다.
@@ -88,7 +111,7 @@ revision `d417d32bf59c711abb5910fd2f76a0eb44697991` 원본 JSON을 읽는다.
 ID/name 중복, 없는 child, cycle을 거부한다. 기본 resource는 SHA-256도 확인한다.
 라이선스는 데이터에 적용되는 CC BY-SA 4.0이며 attribution/provenance를 함께 배포한다.
 
-공식 archive와 PretrainedSED의 실제 447-class 출력 목록을 비교한 결과:
+공식 archive와 PretrainedSED의 실제 447-class 출력 목록을 비교한 결과는 다음과 같다.
 
 | 항목 | 개수 |
 | --- | ---: |
@@ -119,8 +142,11 @@ Custom ontology는 자체 경로/hash로 기록하며 공식 데이터의 revisi
 
 ## 수동 mapping 계약
 
-예제는 `configs/source_mappings.example.json`이다. 이 설정은 완전한 WAVES caption 사전이나
-검증된 품질 규칙이 아니다. 다음처럼 정확한 description alias와 실제 class ID를 등록한다.
+기본 예제는 `configs/source_mappings.example.json`이다. 이 설정은 완전한 WAVES caption
+사전이나 검증된 품질 규칙이 아니다. 후속 검토에서 확장한 후보 설정은
+`configs/source_mappings.frozen-review.json`이며, 적용 범위와 검토 근거는
+[실데이터 준비 현황](real-data-readiness.md)에 있다. 두 설정의 coverage를 구분한다.
+Mapping에는 다음과 같이 정확한 description alias와 실제 class ID를 등록한다.
 
 ```json
 {
@@ -156,7 +182,7 @@ Substring/fuzzy/embedding/LLM mapping은 하지 않는다. 겹치는 alias, 알 
 ```powershell
 .venv/Scripts/python.exe -m waves_sed map-source --description "dog barking" --mappings configs/source_mappings.example.json
 
-# 기존 raw cache를 사용한 두 class의 max 계산 예시. 이 metro 음원에 chopping이 있다는 뜻은 아닙니다.
+# 기존 raw cache를 사용한 두 class의 max 계산 예시. 이 음원에 chopping이 있다는 의미는 아니다.
 .venv/Scripts/python.exe -m waves_sed map-source --description "repeated chopping impacts" --mappings configs/source_mappings.example.json --prediction outputs/predictions/metro.npz --output outputs/phase3/metro-chop-mapping.json
 ```
 
@@ -165,9 +191,10 @@ Threshold나 smoothing을 적용하지 않고 원래 시간 bin을 유지한다.
 Mapping을 지원하지 않거나 raw cache가 없으면 `target_probability=null`이다.
 지원되지 않는 source를 zero 확률이나 missing event로 바꾸지 않는다.
 
-## 실제 자료 검증
+## 2026-09-27 검증 결과
 
-`C:\WAVES` HEAD `07af161`의 frozen finals/reports 전체로 확인했다.
+`C:\WAVES` HEAD `07af161`의 frozen finals/reports 전체를 기본 예제 mapping으로
+정규화하여 확인하였다.
 
 | 결과 | 개수 |
 | --- | ---: |
@@ -179,12 +206,13 @@ Mapping을 지원하지 않거나 raw cache가 없으면 `target_probability=nul
 | reference `ambiguous` / `planned` | 43 / 19 |
 | 예제 mapping `supported` / `unsupported_mapping` | 2 / 60 |
 
-WAVES checkout에 WAV가 없으므로 음원 경로가 없는 것은 예상된 결과다.
-실제 materialized schema와 상대 경로 조인은 test fixture로 검증했다.
-실제 62개 stem의 음향 품질이나 영상 동기화를 평가한 것은 아니다.
+검증 시점의 WAVES checkout에는 WAV가 없으므로 음원 경로는 모두 누락 상태로 나타났다.
+실제 materialized schema와 상대 경로 조인은 test fixture로 검증하였다.
+위의 `2 / 60`은 기본 예제 설정의 mapping coverage이며, 후속 후보 설정의 coverage와
+구분한다.
 
 Phase 2의 실제 metro NPZ 938개 frame에서 두 chopping-class column을 선택하여 집계한 결과는
-NumPy의 직접 max 계산과 정확히 같았다. 이 검증에서 SED 추론은 실행하지 않았다.
+NumPy의 직접 max 계산과 정확히 일치하였다. 이 검증에서 SED 추론은 실행하지 않았다.
 
 테스트는 ontology graph/coverage, 명시적 mapping/unsupported, ID 순서별 max,
 materialized/frozen 조인, merge/role 변경, 누락/충돌, malformed JSON, 출력 보호와
@@ -197,12 +225,23 @@ materialized/frozen 조인, merge/role 변경, 누락/충돌, malformed JSON, �
 uv build --wheel
 ```
 
-실제 checkpoint 테스트는 환경변수 미설정으로 기본 skip한다. Phase 3은 inference 경로를 변경하지 않아
-Phase 2의 실제 모델 검증을 반복하지 않았다. 다음 단계는 Phase 4의 TemporalReference,
-event extraction, 역할별 metric과 JSON/CSV report다.
+당시 전체 테스트 결과는 **226 passed, 1 skipped**, 실행 시간은 9.83초로 나타났다.
+실제 checkpoint 테스트 1개는 환경변수 미설정으로 skip되었으며, 기존 audioread
+deprecation 경고 3개가 발생하였다. Phase 3은 inference 경로를 변경하지 않았으므로
+Phase 2의 실제 모델 검증을 반복하지 않았다.
 
-최종 실행 결과: **226 passed, 1 skipped**, 9.83초. 기존 audioread deprecation 경고 3개만 있었다.
-Ruff lint/format과 wheel build도 통과했다. 별도의 깨끗한 환경에 wheel과 NumPy만 설치해
-ontology 632개·model vocabulary 447개를 읽고 명시적 mapping이 동작하는 것을 확인했다.
-그 환경에는 torch가 설치되어 있지 않다. 새로운 inference나 dependency 설치가 필요하지 않음을
-실제 배포 패키지에서도 검증했다.
+Ruff lint/format과 wheel build를 통과하였다. 별도의 깨끗한 환경에 wheel과 NumPy만
+설치하여 ontology 632개·model vocabulary 447개를 읽고 명시적 mapping이 동작함을
+확인하였다. 해당 환경에는 torch가 없었으며, 추론 의존성 없이 Phase 3 기능을 사용할 수
+있음을 배포 패키지에서도 검증하였다.
+
+## 검증 범위와 한계
+
+검증한 항목은 metadata 조인의 일관성, 공식 ontology와 모델 vocabulary의 관계,
+mapping 규칙 및 확률 column 집계이다. 실제 62개 stem의 음향 품질이나 영상 동기화를
+평가한 결과는 아니다.
+
+`supported` mapping은 평가할 클래스 column을 지정할 수 있음을 의미한다. 음원에 목표
+소리가 있는지, 해당 클래스가 생성 음원에서 충분한 인식 정확도를 보이는지는 실제 음원과
+독립적인 검수 자료로 확인해야 한다. 실제 파일 연결과 다음 평가 절차는
+[실데이터 준비 현황](real-data-readiness.md)에 정리되어 있다.

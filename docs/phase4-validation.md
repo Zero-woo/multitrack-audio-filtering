@@ -1,13 +1,35 @@
-# Phase 4: raw cache 기반 event 추출과 역할별 측정
+# Phase 4: 저장된 확률 기반 이벤트 추출과 역할별 평가
 
-Phase 4는 정규화한 WAVES stem metadata와 이미 생성한 `FramePrediction` NPZ를 받아,
-event 추출 결과와 시간·의미 측정값을 JSON/CSV로 기록한다. 설정을 바꿔도 SED 추론은
-다시 실행하지 않는다. 새 의존성은 없으며 NumPy와 설치된 패키지만으로 평가할 수 있다.
-WAVES 생성 코드와 원본 audio는 수정하지 않는다.
+## 개요와 평가 범위
 
-현재 결과는 계획과 생성 audio 사이의 일관성을 검토하는 자료다. 추출 설정은 보정되지 않은
-초깃값이며 품질 합격선이 아니다. PASS/REVIEW/FAIL 판정은 구현하지 않았고 `decision`은
-항상 `null`이다. 영상 검출기, 시각화, batch inference와 인위적 오류 주입 검증은 별도 단계다.
+평가 모듈은 정규화한 WAVES stem metadata와 `FramePrediction` NPZ에 저장된 소리 확률을
+입력받는다. 목표 소리의 이벤트 구간을 추출하고 역할별 시간 지표와 의미적 근거를 계산하여
+JSON/CSV로 기록한다. 추출 설정을 변경할 때는 저장된 확률을 재사용하므로 SED 추론을
+반복하지 않는다. 기본 NumPy 환경에서 실행하며 WAVES 생성 코드와 원본 음원을 보존한다.
+
+기본 시간 기준은 WAVES의 생성 계획이다. 따라서 산출 지표는 계획과 생성 음원 사이의
+일관성을 나타내며 실제 영상과의 동기화 정확도를 직접 입증하지 않는다. 예제 추출 설정은
+보정 전 초깃값이다. 품질 판정은 별도의 [Phase 7 정책](phase7-validation.md)에서 수행하며,
+판정 설정을 지정하지 않은 평가 결과의 `decision`은 `null`이다.
+
+이 문서는 현재 평가 계약과 **2026-09-27의 Phase 4 기준 검증 결과**를 구분하여 설명한다.
+배치 추론·시각화와 변형 실험은 각각 [Phase 5](phase5-validation.md),
+[Phase 6](phase6-validation.md)에서 설명한다.
+
+## 코드 구성
+
+| 모듈 | 책임 |
+| --- | --- |
+| `evaluation_config.py` | 평가 설정 schema와 값의 유효성 검사 |
+| `mapping.py` | 허용 클래스 확률을 목표 확률로 집계 |
+| `events.py` | 목표 확률 평활화와 검출 구간 추출 |
+| `temporal_reference.py` | 기대 시간 구간의 출처·상태·사용 가능 여부 해석 |
+| `temporal_metrics.py` | onset·span·ambience 지표 계산 |
+| `evaluation.py` | cache 동일성 검사와 stem 단위 평가 조합 |
+| `reporting.py` | stem·clip·dataset 집계, JSON/CSV 출력과 입력 보호 |
+| `phase4.py` | `evaluate` CLI 입력과 실행 연결 |
+
+모듈 경로의 기준은 `src/waves_sed/`이다.
 
 ## 입력과 실행
 
@@ -24,8 +46,8 @@ cd C:\multitrack-audio-filtering
 .venv/Scripts/python.exe -m waves_sed adapt-waves --frozen-finals C:/WAVES/data/frozen_pass2/frozen_finals.json --frozen-reports C:/WAVES/data/frozen_pass2/frozen_reports.json --mappings configs/source_mappings.example.json --output outputs/phase3/frozen-stems.json
 ```
 
-Prediction index는 아래 구조만 허용한다. 이 예시의 ID와 경로는 실제 manifest 및 cache에
-맞게 바꿔야 한다. 상대 NPZ 경로의 기준은 **index JSON이 있는 디렉터리**다.
+Prediction index는 아래 구조만 허용한다. 예시 ID와 경로는 실행 대상 manifest 및 cache에
+맞게 지정한다. 상대 NPZ 경로의 기준은 **index JSON이 있는 디렉터리**이다.
 
 ```json
 {
@@ -50,8 +72,8 @@ New-Item -ItemType Directory -Force outputs/phase4 | Out-Null
 .venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/phase3/frozen-stems.json --predictions outputs/phase4/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/phase4/frozen-report
 ```
 
-실제 평가에는 해당 index에 각 stem의 **실제 audio로 추론한 cache**를 연결한 뒤 같은 명령을
-실행한다. stem 이름이나 비슷한 source 설명만 보고 다른 audio의 cache를 연결하면 안 된다.
+실제 평가에는 해당 index에 각 stem의 **실제 음원으로 추론한 cache**를 연결한다.
+파일 연결은 stem 이름이나 source 설명의 유사성이 아니라 오디오 동일성 검사를 통과해야 한다.
 `--ontology path.json`은 선택 사항이며 생략하면 번들 ontology를 사용한다. `--config`와
 `--output-dir`은 필수다. 명령은 stdout에 출력 위치와 상태별 개수 요약을 기록한다.
 
@@ -116,12 +138,12 @@ Relabel, 역할 변경, merge 등으로 `ambiguous`인 기록은 허용 설정�
 영상의 ground truth가 아니므로 이 측정만으로 실제 영상과의 동기화를 주장할 수 없다.
 선택 parent의 계획만 사용하며 merged child의 구간을 임의로 합치지 않는다.
 
-`planned`로 저장됐지만 issues, merge 목록, 명시적인 final/planned label·role에서 모호함이
+`planned`로 저장되었지만 issues, merge 목록, 명시적인 final/planned label·role에서 모호함이
 드러나면 `inconsistent_reference_status`로 거부한다. 이 모순은 opt-in으로 우회하지 않는다.
 외부 provider의 명시적 usable 빈 annotation은 인터페이스에서 허용하지만, WAVES 빈 계획은
 평가 불가라는 정책을 유지한다.
 
-`ExternalVideoReference`는 향후 독립적인 영상 annotation/detector를 연결하기 위한 Protocol이다.
+`ExternalVideoReference`는 독립적인 영상 annotation/detector를 연결하기 위한 Protocol이다.
 실제 영상 검출기는 구현되어 있지 않다. Python API `evaluate_stem(..., reference=provider)`로
 같은 계약의 provider를 연결할 수 있으며, 현재 CLI는 `WavesPlannedReference`를 사용한다.
 외부 구현은 영상 식별자와 annotation/detector provenance를 제공하고, 누락·모호함을 선언해야 한다.
@@ -206,7 +228,7 @@ Onset 정확도는 요구하지 않는다. Confidence는 raw 확률이며 부분
 길이만큼만 기여한다. Expected 구간끼리 겹쳐도 중복 계산하지 않는다. Expected가 비면 occupancy와
 confidence는 `null`이다. Expected/detected/intersection/observed-expected duration을 초로 기록한다.
 
-## 의미 측정과 report
+## 의미적 근거와 평가 보고서
 
 `semantic_evidence`는 허용 클래스 밖에서 raw 최대 확률이 `outside_family_threshold` 이상인
 클래스를 peak 내림차순으로 top-k 기록한다. 각 행에는 duration 가중 평균 확률, threshold 이상인
@@ -246,7 +268,7 @@ audio/video를 덮어쓰지 못하게 한다. 실제 같은 파일을 가리키�
 여러 파일 전체를 하나의 transaction으로 쓰는 것은 아니다. 이전 실행에서 남은 파일은 삭제하지
 않으며 현재 결과는 `dataset.json`에 등재된 파일만 사용해야 한다.
 
-## 검증 재현과 한계
+## 검증 방법과 기준 실행 결과
 
 ```powershell
 .venv/Scripts/python.exe -m pytest -q
@@ -259,36 +281,41 @@ Synthetic regression은 greedy matching 실패와 최대 대응 수 우선 정�
 미관측 구간, empty/null 정책, cache 동일성, 모호한 계획 opt-in과 source 보호를 확인한다.
 실제 모델 품질이나 WAVES 영상 동기화 정확도를 이 테스트 통과만으로 검증한 것은 아니다.
 
-2026-09-27 최종 검증:
+### 회귀 테스트와 의존성 분리 검증: 2026-09-27
 
-- 전체 테스트 **515 passed, 1 skipped**, 13.69초. Skip은 환경변수를 지정하지 않은 실제
-  checkpoint 통합 테스트이며, 기존 audioread의 Python 3.11 deprecation 경고 3개만 있었다.
-- Ruff lint/format, `git diff --check`, wheel build 통과. 추론 코드를 변경하지 않았으므로
+- 전체 테스트는 **515 passed, 1 skipped**로 나타났으며 실행 시간은 13.69초였다. Skip은
+  환경변수를 지정하지 않은 실제 checkpoint 통합 테스트였다. audioread의 Python 3.11
+  deprecation 경고 3개가 발생하였다.
+- Ruff lint/format, `git diff --check`, wheel build를 통과하였다. 추론 코드를 변경하지 않았으므로
   모델을 다시 로딩하는 Phase 2 통합 검증은 반복하지 않았다.
 - `.cache/phase4-package-smoke`에 wheel과 NumPy 1.26.4만 설치하고 실제 cache API 평가와
-  frozen metadata CLI 평가를 실행했다. torch/torchaudio/librosa/soundfile이 없음을 확인했다.
-- 실제 WAVES frozen 자료 **29 clips / 62 stems**를 평가 명령에 연결했다. 원본 WAV/cache가
-  없으므로 빈 prediction index를 사용했고, **62개 모두 unavailable**이다. Mapping은
-  supported 2 / unsupported 60, reference는 planned 19 / ambiguous 43으로 보존했다.
-  평가 가능한 metric의 기여 수는 0이며 missing/extra event 수를 꾸며내지 않았다.
+  frozen metadata CLI 평가를 실행하였다. torch/torchaudio/librosa/soundfile이 없음을 확인하였다.
+- 실제 WAVES frozen 자료 **29 clips / 62 stems**를 평가 명령에 연결하였다. 원본 WAV/cache가
+  없어 빈 prediction index를 사용하였으며 **62개 모두 unavailable**로 나타났다. 당시 사용한
+  `source_mappings.example.json`의 mapping 결과는 supported 2 / unsupported 60이었고,
+  reference는 planned 19 / ambiguous 43으로 보존하였다. 평가 가능한 metric의 기여 수는 0이었으며
+  unavailable 행의 missing/extra event 수는 `null`로 기록하였다.
 
-실제 Phase 2 metro cache의 938 frames를 사용하는 재현 명령:
+### 실제 cache를 이용한 설정 변경 검증
+
+Phase 2에서 생성한 공개 지하철 음원 cache의 938 frames를 사용하는 재현 명령은 다음과 같다.
 
 ```powershell
 .venv/Scripts/python.exe scripts/verify_cached_evaluation.py --prediction outputs/predictions/metro.npz --audio .cache/PretrainedSED/test_files/752547__iscence__milan_metro_coming_in_station.wav --class-id /m/0195fx --output-dir outputs/phase4/metro-demo
 ```
 
-Class는 실제 vocabulary의 `Subway, metro, underground`다. 검증 스크립트의 reference는
+Class는 실제 vocabulary의 `Subway, metro, underground`이다. 검증 스크립트의 reference는
 **전체 길이를 쓰는 synthetic fixture**이며, origin을 `synthetic_full_track_demonstration`으로
-기록한다. WAVES의 계획이나 영상 annotation을 만들어낸 것이 아니며 결과의 IoU는 실제 성능이 아니다.
+기록한다. 이 fixture는 WAVES 계획이나 영상 annotation을 대체하지 않으며, 표의 IoU는
+fixture와 검출 구간의 일치도이다. 실제 WAVES 인식·동기화 성능으로 해석하지 않는다.
 
 | 추출 threshold | 검출 event 수 | synthetic 전체 길이 대비 IoU |
 | --- | ---: | ---: |
 | 0.2 | 1 | 0.7978965802497207 |
 | 0.5 | 0 | 0.0 |
 
-두 설정 모두 추론은 실행하지 않았고 NPZ SHA-256은 변경되지 않았다. 이 검증은 실제 cache와
-계산·report 경로가 연결되고 threshold만 바꿔 재평가할 수 있다는 점을 확인한다.
+두 설정 모두 추가 추론 없이 실행되었고 NPZ SHA-256은 유지되었다. 실제 cache를 이용한
+계산·보고서 출력과 threshold 변경 후 재평가가 정상 동작함을 확인하였다.
 스크립트와 CLI 모두 입력 audio뿐 아니라 cache에 기록된 원본 audio 경로도 보호한다.
 
 로컬 산출물은 Git에서 제외된다.
@@ -297,6 +324,9 @@ Class는 실제 vocabulary의 `Subway, metro, underground`다. 검증 스크립�
 - `outputs/phase4/metro-demo/threshold-0.2/`, `threshold-0.5/`: synthetic reference를 쓴 실제 cache report.
 - `outputs/phase4/wheel-frozen-reports/`, `wheel-metro-demo/`: NumPy만 설치한 wheel 환경의 동일 검증.
 
-현재 실제 WAVES stem의 음향 품질은 검증하지 못했다. 실측에는 실제 materialized run과
-원본 stem별 cache가 필요하다. 다음 단계는 Phase 5의 시각화와 batch inference이며,
-controlled corruption과 configurable 품질 판정은 각각 Phase 6~7로 남아 있다.
+## 적용 한계
+
+기준 검증에는 실제 WAVES stem WAV가 포함되지 않았다. 실제 생성 품질 측정에는 물리 파일이
+확보된 WAVES 실행 산출물과 stem별 cache가 필요하다. 영상 동기화 검증에는 생성 계획과 독립적인
+시간 기준도 필요하다. 자료 연결 상태와 실데이터 검증 절차는
+[실데이터 검증 준비 문서](real-data-readiness.md)에서 설명한다.

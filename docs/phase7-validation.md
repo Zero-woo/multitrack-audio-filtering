@@ -1,17 +1,35 @@
-# Phase 7: 명시적인 설정에 따른 판정
+# Phase 7: 명시적 기준에 따른 품질 판정과 근거 기록
 
-Phase 7은 기존 temporal metric 위에 선택적인 PASS / REVIEW / FAIL / UNSUPPORTED 정책을
-추가한다. 추론·확률·이벤트 추출·metric은 변경하지 않는다. `evaluate`와 `visualize`에
-`--filter-config`를 전달할 때만 적용한다. 설정을 생략하면 이전 보고서 구조와 `decision=null`을
-유지한다. 기본 예제의 모든 threshold도 null이다.
+## 개요와 판정 범위
+
+판정 모듈은 계산된 시간 지표에 명시적 기준을 적용하여 PASS / REVIEW / FAIL / UNSUPPORTED를
+부여한다. 추론·원시 확률·이벤트 추출·지표 계산과 분리되어 있으며, `evaluate`와 `visualize`에
+`--filter-config`를 전달할 때만 활성화한다. 설정을 생략하면 판정 근거 필드가 없는 보고서 구조와
+`decision=null`을 유지한다. 기본 예제의 모든 threshold도 null이다.
 
 PASS는 명시한 temporal 조건을 충족한다는 뜻이다. WAVES planned support를 기준으로 한
 판정은 내부 시간 일관성에 관한 것이며 영상 동기화나 전체 청각적 품질을 입증하지 않는다.
 Outside-family 확률로 자동 FAIL을 만들지 않는다. WAV 이동·삭제 같은 후속 동작도 하지 않는다.
 
-## 실행
+이 문서는 현재 판정 계약과 **Phase 7 완료 시점의 검증 기록**을 설명한다.
+검증 기록의 기준은 `adb0a4f`(2026-09-29)이며, 이 날짜는 결과를 기록한 commit 날짜이다.
 
-새 dependency는 없다. 평가와 정책 적용은 기본 NumPy 환경에서 실행하며, 그림에는 기존
+## 코드 구성
+
+| 모듈 | 책임 |
+| --- | --- |
+| `decision.py` | `FilterConfig`, 판정 enum, `decide()`와 조건별 근거 계산 |
+| `evaluation.py` | stem 평가 결과에 선택적 판정과 provenance 결합 |
+| `reporting.py` | 판정 audit 검증, JSON/CSV 필드와 상태별 집계 |
+| `visualization.py` | 판정·사유·관측값·경계값 표시와 보고서 일치 검사 |
+| `phase4.py`, `phase5.py` | `--filter-config` 읽기, 입력 보호와 명령 연결 |
+| `scripts/verify_filter_policy.py` | 공개 음원 cache를 이용한 정책 적용 재현 |
+
+마지막 스크립트를 제외한 모듈 경로의 기준은 `src/waves_sed/`이다.
+
+## 의존성과 실행
+
+판정에 추가 의존성은 없다. 평가와 정책 적용은 기본 NumPy 환경에서 실행하며, 그림에는
 `[visualization]` 선택 의존성이 필요하다.
 
 ```powershell
@@ -77,7 +95,7 @@ Outside-family 확률로 자동 FAIL을 만들지 않는다. WAV 이동·삭제 
    숫자이면 그 조건은 `unavailable`/REVIEW다. 나머지 조건의 유효한 FAIL이 있으면 최종 FAIL,
    그렇지 않고 REVIEW가 있으면 REVIEW, 모든 활성 조건이 PASS이면 PASS다.
 
-Ambiguous WAVES reference를 `allow_ambiguous_reference=true`로 metric 계산에 사용했더라도
+Ambiguous WAVES reference를 `allow_ambiguous_reference=true`로 metric 계산에 사용하였더라도
 판정은 REVIEW다. Missing reference를 무음이나 정답 구간으로 바꾸지 않는다. External
 reference의 명시적인 origin/status vocabulary는 유지한다.
 
@@ -93,8 +111,8 @@ Stem의 `decision`은 문자열 또는 null이다. 설정을 전달한 경우에
 정규화된 config, 원본 설정의 config_provenance(path/hash), implementation_version(현재 1)이 있다.
 `provenance.filter_config`와 `filter_config_provenance`에도 같은 정책을 연결한다.
 
-Metric provenance의 기존 `decision=none` convention은 **metric 계층 자체**가 판정하지
-않는다는 의미로 유지했다. 최종 optional 판정은 stem의 decision/audit에 있다.
+Metric provenance의 `decision=none` convention은 **metric 계층 자체**가 판정하지
+않는다는 의미이다. 최종 선택적 판정은 stem의 decision/audit에 기록한다.
 
 CSV에는 `decision_status`, `decision_reason_codes`, `decision_checks`, `decision_config`,
 `decision_config_provenance`, `decision_implementation_version`을 추가한다. 구조화된 값은
@@ -125,20 +143,29 @@ audit = decide(existing_report, policy)  # 보관한 report에 정책 자체만 
 사용한다. Waveform/cache를 현재 상태로 재검증하는 API는 아니다. `FilterConfig()`는 모두
 비활성, `.from_dict()`는 파일 경로 없는 programmatic 정책이다.
 
-## 검증 (2026-09-28)
+## 기준 검증 결과: Phase 7 완료본
 
-- 신규 core 103개, CLI 21개, reporting 26개, visualization 27개: **177개 통과**.
-- 최종 전체 **1019 passed, 1 skipped**, 47.32초. Skip은 환경변수가 없는 선택적 실제 모델 test다.
-  기존 audioread deprecation warning 3개 외 오류 없음. 첫 전체 실행의 기존 시각화 subprocess
-  test가 timeout했으나 같은 test 단독 실행은 1.44초에 통과했고, 이후 전체 재실행도 통과했다.
+### 회귀 테스트와 근거 검증
+
+- 판정 관련 core 103개, CLI 21개, reporting 26개, visualization 27개로 구성된
+  **177개 테스트를 통과**하였다.
+- 전체 테스트는 **1019 passed, 1 skipped**로 나타났으며 실행 시간은 47.32초였다. Skip은
+  환경변수를 지정하지 않은 선택적 실제 모델 테스트였다. audioread deprecation 경고 3개가
+  발생하였으며 최종 실행의 오류는 없었다. 첫 전체 실행에서 시각화 subprocess 테스트가
+  timeout되었으나 동일 테스트의 단독 실행은 1.44초에 통과하였고, 이후 전체 재실행도 통과하였다.
 - 정확한 min/max 경계, 복수 조건, missing/invalid metric, ambiguous opt-in, 미지원, strict JSON,
   provenance, 변경된 audit 거부, 혼합 정책, CSV null/기여 수, 원본·hardlink·설정 변경 보호,
-  cache 불변과 optional dependency 격리를 검증했다.
+  cache 불변과 optional dependency 격리를 검증하였다.
 
-WAVES frozen 29 clips / 62 stems를 빈 prediction index로 평가했다. 검증용으로 모든 역할의
-규칙을 활성화했을 때 REVIEW 2, UNSUPPORTED 60, PASS/FAIL 0이다. 기본 all-null 정책에서는
-unassigned 62다. 각각 `outputs/phase7/frozen-reports`와 `frozen-disabled-reports`에 있다.
+### 결측 자료와 판정 비활성 상태
+
+WAVES frozen 29 clips / 62 stems를 빈 prediction index와 당시의
+`source_mappings.example.json`으로 평가하였다. 검증용으로 모든 역할의 규칙을 활성화한 결과는
+REVIEW 2, UNSUPPORTED 60, PASS/FAIL 0으로 나타났다. 기본 all-null 정책에서는 unassigned 62로
+나타났다. 결과는 각각 `outputs/phase7/frozen-reports`와 `outputs/phase7/frozen-disabled-reports`에 있다.
 이는 결측 자료 처리 검증이며 실제 WAVES 음질 평가가 아니다.
+
+### 공개 음원 cache에 대한 정책 적용
 
 실제 공개 음원 cache의 정책 적용 검증은 `scripts/verify_filter_policy.py`로 재현한다.
 Phase 6에서 만든 명시적인 synthetic full-track demo만 허용하며, metadata/reference/cache
@@ -148,24 +175,28 @@ Phase 6에서 만든 명시적인 synthetic full-track demo만 허용하며, met
 .venv/Scripts/python.exe scripts/verify_filter_policy.py --demo-dir outputs/phase6/metro-demo --filter-config outputs/phase7/demonstration-filter.json --output-dir outputs/phase7/metro-policy-demo --plots
 ```
 
-다시 실행할 때는 새 output-dir을 사용한다. 검증용 `demonstration-filter.json`은 onset recall0.9,
-평균 오차50ms, span `{"pass":0.79,"fail":0.78}`, ambience occupancy0.8을 명시했다.
+다시 실행할 때는 새 output-dir을 사용한다. 검증용 `demonstration-filter.json`은 onset recall 0.9,
+평균 오차 50ms, span `{"pass":0.79,"fail":0.78}`, ambience occupancy 0.8을 명시하였다.
 이 값은 여러 판정 경로를 보여주기 위한 예시이며 calibration 결과나 운영 권장값이 아니다.
 
-실행 결과는 **PASS 5 / REVIEW 2 / FAIL 2**였다. 500ms shift와 shorten은 REVIEW,
-1000ms shift와 remove는 FAIL이며 원본을 포함한 나머지 5개는 PASS다. 기존 9개 cache와
-metric·검출 구간은 모두 그대로였고, 9개 PNG와 HTML을 생성했다. REVIEW 그림을 직접 열어
-조건·관측값·경계와 파형이 읽기 좋게 배치되었음을 확인했다.
+실행 결과는 **PASS 5 / REVIEW 2 / FAIL 2**로 나타났다. 500ms shift와 shorten은 REVIEW,
+1000ms shift와 remove는 FAIL이었으며, 원본을 포함한 나머지 5개는 PASS였다. 기존 9개 cache와
+metric·검출 구간은 유지되었고, 9개 PNG와 HTML을 생성하였다. REVIEW 그림을 확인하여
+조건·관측값·경계와 파형의 배치에 겹침이 없음을 검증하였다.
 
 `outputs/phase7/metro-policy-demo/reports/dataset.json`과 `visuals/index.html`에서 확인한다.
 별도 `.cache/phase7-package-smoke` 환경에 wheel+NumPy만 설치하고 같은 스크립트를 `--plots`
-없이 실행했다. torch/torchaudio/librosa/soundfile/Matplotlib이 없으며 9개 stem 보고서와 summary가
-완전히 일치했다. 결과는 `outputs/phase7/wheel-policy-demo/reports/`에 있다.
-Ruff lint/format, `git diff --check`, wheel build도 통과했다.
+없이 실행하였다. torch/torchaudio/librosa/soundfile/Matplotlib이 없는 상태에서 생성한
+9개 stem 보고서와 summary가 기존 결과와 완전히 일치하였다.
+결과는 `outputs/phase7/wheel-policy-demo/reports/`에 있다.
+Ruff lint/format, `git diff --check`, wheel build도 통과하였다.
 
-## 남은 범위
+## 적용 한계와 추가 검증 요건
 
-Phase 1~7의 구현 순서는 완료했다. 남은 실험 과제는 실제 WAVES WAV 확보·경로 연결,
-source별 명시적 mapping 확장, 신뢰 가능한 reference와 validation 자료에 기반한 threshold
-calibration이다. Human evaluation platform, 학습, 영상 event detector, 파일 자동 삭제/이동은
-이번 구현에 포함하지 않는다.
+Phase 1~7의 구현을 완료하였다. 실제 운영 기준의 검증에는 WAVES 생성 WAV와 metadata의 경로
+연결, source별 명시적 mapping 검토, 신뢰 가능한 시간 기준 및 품질 검수 자료가 필요하다.
+Threshold calibration은 이러한 validation 자료를 확보한 뒤 수행한다. 준비 상태와 실행 절차는
+[실데이터 검증 준비 문서](real-data-readiness.md)에서 설명한다.
+
+Human evaluation platform, 모델 학습, 영상 이벤트 검출기, 파일 자동 삭제·이동은
+현재 구현 범위에 포함하지 않는다.

@@ -1,13 +1,29 @@
-# Phase 5: batch inference와 cache 시각화
+# Phase 5: 배치 추론과 저장된 확률의 시각화
 
-Phase 5는 정규화된 stem manifest를 순차 추론하는 `batch-infer`와, 저장된 raw cache를
-그림으로 내보내는 `visualize`를 추가한다. 추론, metric 계산, 그림 생성은 각각 독립적으로
-실행할 수 있다. 기존 `evaluate`가 stem·clip·dataset JSON/CSV를 만들며, 시각화는 현재
-설정으로 계산한 평가 보고서를 포함하는 PNG/SVG와 정적 HTML을 만든다.
+## 개요와 입출력
 
-WAVES 생성 코드와 원본 audio는 수정하지 않는다. WAVES 계획은 내부 일관성 비교용이며
-영상 정답이 아니다. `decision`은 계속 `null`이고, Phase 6의 controlled corruption과
-Phase 7의 PASS/REVIEW/FAIL 정책은 이 단계에 포함하지 않는다.
+배치 추론과 시각화는 여러 stem을 처리하고 검출 결과의 시간적 위치를 검토하기 위한 기능이다.
+`batch-infer`는 정규화된 manifest를 읽어 stem별 원시 확률 cache를 생성한다. `visualize`는
+저장된 cache와 평가 설정을 읽어 파형·기대 구간·확률·검출 구간을 같은 시간축에 표시한다.
+
+추론, 지표 계산, 그림 생성은 독립적으로 실행할 수 있다. `evaluate`는 stem·clip·dataset
+JSON/CSV를 출력하며, `visualize`는 평가 보고서를 포함한 index JSON, PNG/SVG와 정적 HTML을
+출력한다. WAVES 생성 코드와 원본 음원은 보존한다. WAVES 계획에 대한 비교는 내부 일관성
+평가이며 영상 정답과의 비교를 의미하지 않는다.
+
+판정 설정을 지정하지 않으면 `decision`은 `null`이다. 현재 제공되는 `--filter-config`와
+판정 근거 표시는 [Phase 7](phase7-validation.md)에서 설명한다. 이 문서의 검증 수치는
+**Phase 5 완료 시점의 검증 기록**에 해당하며, 기록 기준은 `03cd970`(2026-09-28)이다.
+
+## 코드 구성
+
+| 모듈 | 책임 |
+| --- | --- |
+| `batch.py` | 모델 단일 초기화, stem별 추론·cache 재사용, 부분 실패 처리 |
+| `visualization.py` | 파형 envelope, 시간축 패널, 보고서 검증과 그림 저장 |
+| `phase5.py` | `batch-infer`·`visualize` CLI와 index·gallery 생성 |
+
+모듈 경로의 기준은 `src/waves_sed/`이다. 지표 계산은 Phase 4의 `evaluate_stem()`을 재사용한다.
 
 ## 설치와 의존성
 
@@ -22,8 +38,8 @@ cd C:\multitrack-audio-filtering
 uv pip install --python .venv/Scripts/python.exe -e ".[visualization]"
 ```
 
-의존성 범위는 `matplotlib>=3.9,<4`, `soundfile==0.13.1`이다. 이번 환경에서는
-Matplotlib 3.11.2와 soundfile 0.13.1을 사용했다. 새 환경에서 추론까지 실행하려면
+의존성 범위는 `matplotlib>=3.9,<4`, `soundfile==0.13.1`이다. 기준 검증 환경에서는
+Matplotlib 3.11.2와 soundfile 0.13.1을 사용하였다. 새 환경에서 추론까지 실행하려면
 프로젝트의 기존 `[atst]` 설치 절차도 적용한다.
 
 Matplotlib의 정적 backend는 GUI 창 없이 파일을 출력할 수 있으므로 이 작업에는
@@ -38,7 +54,7 @@ Matplotlib의 정적 backend는 GUI 창 없이 파일을 출력할 수 있으므
 ## 기본 실행 순서
 
 먼저 Phase 3의 `adapt-waves`로 정규화한 manifest를 준비한다. 아래의
-`outputs/stems.json`은 실제 stem audio 경로를 포함하는 사용자의 manifest 경로로 바꾼다.
+`outputs/stems.json`은 실제 stem audio 경로를 포함하는 실행 대상 manifest 경로로 지정한다.
 Frozen metadata의 `audio_id`만으로 파일 경로를 추측하지 않으며,
 실제 WAV가 없으면 `batch-infer`는 그 stem을 `missing_audio`로 기록한다.
 
@@ -78,19 +94,19 @@ backend 이름, **447개 class ID와 이름의 순서**가 모두 일치해야 �
 stem 설명만 일치하는 cache는 재사용하지 않는다.
 
 Cache hit에는 현재 실행에서 요청한 device를 덮어쓰지 않는다. NPZ의 실제 추론 device와
-dependency provenance를 유지한다. `batch-status.json`의 `requested_device`는 이번
+dependency provenance를 유지한다. `batch-status.json`의 `requested_device`는 해당
 명령의 요청값이며, 각 행의 `prediction_provenance.device`는 cache를 만든 당시 값이다.
 동일한 cache를 CPU와 GPU 환경 사이에서 옮겨 사용할 수 있다.
 
 **모든 항목이 cache hit이면 checkpoint 파일을 열지 않는다.** 존재하지 않는 checkpoint
 경로를 인자로 주어도 유효한 cache 재사용은 가능하다. Batch provenance의
 `checkpoint_sha256`은 고정된 기대값이며, `checkpoint_hash_scope`가 이 범위를 설명한다.
-그 필드를 현재 `checkpoint_path`의 파일을 읽어 검증했다는 뜻으로 해석하면 안 된다.
+이 필드는 현재 `checkpoint_path`에 있는 파일을 읽어 검증하였다는 의미가 아니다.
 실제 새 추론에서는 backend가 checkpoint bytes를 검증한다.
 
 기존 cache가 손상되었거나 입력/모델과 다르면 `cache_conflict`로 남기고 파일을 보존한다.
 새 output 디렉터리를 선택하거나 `--overwrite`를 명시해야 다시 추론한다. Overwrite 중
-추론이 실패해 기존 cache가 남더라도, 이번 실행의 성공 index에는 그 cache를 넣지 않는다.
+추론이 실패해 기존 cache가 남더라도, 해당 실행의 성공 index에는 그 cache를 넣지 않는다.
 유효한 새 결과는 임시 파일을 거쳐 교체한다. Raw NPZ에는 threshold나 smoothing을 적용하지
 않으며, 이 설정은 이후 평가 단계에만 속한다.
 
@@ -118,7 +134,7 @@ Prediction index는 기존 `evaluate`와 `visualize`에서 그대로 읽을 수 
 }
 ```
 
-상대 경로는 index 파일이 있는 디렉터리 기준이다. **이번 실행에서 `cached` 또는
+상대 경로는 index 파일이 있는 디렉터리 기준이다. **해당 실행에서 `cached` 또는
 `inferred`로 성공한 stem만** index에 들어간다. 이전 실행의 불필요한 cache는 지우지 않으며,
 index에 없는 파일은 현재 결과에 포함되지 않는다. 재실행 시 status와 index는 최신 실행
 결과로 교체하므로 이 파일들은 실행 이력 저장소가 아니다.
@@ -143,6 +159,7 @@ index에 없는 파일은 현재 결과에 포함되지 않는다. 재실행 시
 | --- | --- |
 | `--stems`, `--predictions` | 필수. 정규화 manifest와 raw prediction index |
 | `--mappings`, `--config` | 필수. 현재 mapping 및 evaluation 설정 |
+| `--filter-config` | 선택. Phase 7의 역할별 판정 설정 |
 | `--output-dir` | 필수. 그림·gallery·index 출력 디렉터리 |
 | `--ontology` | 선택. 생략하면 번들 AudioSet ontology |
 | `--format` | `png` 또는 `svg`, 기본 `png` |
@@ -216,7 +233,7 @@ SVG를 선택하면 확장자가 `.svg`가 된다. Index의 `summary`에는 선�
 남긴다.
 
 `rendered`는 그림 파일이 생성되었다는 뜻이며 metric 사용 가능 여부나 품질 합격을 뜻하지
-않는다. Unavailable 평가도 설명이 있는 그림을 정상 생성했다면 종료 코드는 `0`이다.
+않는다. Unavailable 평가도 설명이 있는 그림을 정상 생성하였다면 종료 코드는 `0`이다.
 실제로 그림 생성에 실패한 stem이 있으면 다른 stem을 계속 처리하고 종료 코드 `1`을
 반환한다. 개별 오류는 stderr와 index에 남긴다. `--stem-id`가 manifest에 없거나 index가 잘못된
 경우, 의존성이 없거나 출력 사전 검증이 실패한 경우에도 종료 코드 `1`을 반환한다.
@@ -234,19 +251,21 @@ stem audio, provenance에 기록된 source media/metadata를 output이 덮어쓸
 충돌도 검사한다. 선택하지 않은 stem의 입력도 보호한다. 손상된 NPZ에서도 읽을 수 있는
 audio provenance는 보호하며, 보호를 위해 읽었다고 cache를 유효한 것으로 승격하지 않는다.
 
-## 확인한 실행과 검증 범위
+## 기준 실행과 검증 결과: Phase 5 완료본
+
+### 실제 CPU 배치 추론과 cache 재사용
 
 2026-09-28의 CPU 실행에서는 기존 공개 metro WAV의 `0–2`초와 `10–12.5`초 구간을
-PCM16 WAV 두 개로 저장한 뒤 실제 frozen ATST 추론을 실행했다. 이는 WAVES 생성 stem이
+PCM16 WAV 두 개로 저장한 뒤 실제 frozen ATST 추론을 실행하였다. 이는 WAVES 생성 stem이
 아니며, manifest에 `synthetic_demo_metadata`, missing reference와 원본 excerpt provenance를
-명시했다. 첫 실행은 `inferred_count=2`, `backend_initializations=1`이었다.
-동일 결과 디렉터리로 재실행하면서 의도적으로 존재하지 않는 checkpoint 경로를 전달했을 때
-`cached_count=2`, `inferred_count=0`, `backend_initializations=0`을 확인했다.
+명시하였다. 첫 실행은 `inferred_count=2`, `backend_initializations=1`이었다.
+동일 결과 디렉터리로 재실행하면서 의도적으로 존재하지 않는 checkpoint 경로를 전달하였을 때
+`cached_count=2`, `inferred_count=0`, `backend_initializations=0`을 확인하였다.
 
 자료는 `outputs/phase5/demo-inputs/`, cache는 `outputs/phase5/demo-batch/`, 평가 보고서는
 `outputs/phase5/demo-evaluation/`, gallery는 `outputs/phase5/demo-visuals/index.html`에 있다.
-두 stem 모두 cache 기반 detection은 사용 가능했고 reference가 없으므로 temporal metric은
-`null`이었다. PNG 두 개와 정적 gallery를 생성했다. 결과를 다시 확인하는 명령은 다음과 같다.
+두 stem 모두 cache 기반 detection은 사용 가능하였고 reference가 없으므로 temporal metric은
+`null`이었다. PNG 두 개와 정적 gallery를 생성하였다. 결과를 다시 확인하는 명령은 다음과 같다.
 
 ```powershell
 .venv/Scripts/python.exe -m waves_sed batch-infer --stems outputs/phase5/demo-inputs/stems.json --checkpoint outputs/phase5/intentionally-absent-checkpoint.pt --output-dir outputs/phase5/demo-batch
@@ -262,31 +281,37 @@ PCM16 WAV 두 개로 저장한 뒤 실제 frozen ATST 추론을 실행했다. �
 report/cache/config 불일치, missing/ambiguous/unsupported 상태, PNG/SVG, 긴 머리말,
 HTML escaping, 선택 실행과 optional dependency 분리를 확인한다. CLI의 fresh process
 검사에서는 inference library import를 차단한 cache hit과 시각화도 실행한다.
-최종 검증 결과:
 
-- 전체 **647 passed, 1 skipped**, 54.62초. Skip은 환경변수를 설정하지 않은 기존 실제
-  checkpoint 통합 테스트다. 이번 단계의 실제 CPU batch 실행은 별도로 위와 같이 확인했다.
-  기존 audioread의 Python 3.11 deprecation 경고 3개만 있었다.
-- Ruff lint/format, `git diff --check`, wheel build 통과.
-- 새 `.cache/phase5-package-smoke` 환경에 wheel과 NumPy 1.26.4만 설치했다. torch,
+### 회귀 테스트와 배포 패키지 검증
+
+- 전체 테스트는 **647 passed, 1 skipped**로 나타났으며 실행 시간은 54.62초였다. Skip은
+  환경변수를 설정하지 않은 실제 checkpoint 통합 테스트였다. 실제 CPU batch 동작은 별도 실행으로
+  확인하였다. audioread의 Python 3.11 deprecation 경고 3개가 발생하였다.
+- Ruff lint/format, `git diff --check`, wheel build를 통과하였다.
+- 새 `.cache/phase5-package-smoke` 환경에 wheel과 NumPy 1.26.4만 설치하였다. torch,
   torchaudio, librosa, soundfile, Matplotlib이 없는 상태에서 실제 demo cache 두 개를
-  재사용했고 backend 초기화는 0회였다.
-- 같은 wheel 환경에 `[visualization]`만 추가한 뒤 SVG 두 개와 gallery를 생성했다.
+  재사용하였고 backend 초기화는 0회였다.
+- 같은 wheel 환경에 `[visualization]`만 추가한 뒤 SVG 두 개와 gallery를 생성하였다.
   결과는 `outputs/phase5/wheel-visuals/`에 있다. 추론 라이브러리는 설치하지 않았다.
-- 실제 frozen metadata 62개를 `batch-infer`에 전달하면 전부 `missing_audio`,
-  backend 초기화 0회, 빈 성공 index로 기록된다. 첫 stem을 선택해 누락/모호함을
-  표시하는 SVG도 만들었다. `outputs/phase5/frozen-batch/`, `frozen-visual/`에 있다.
+- 실제 frozen metadata 62개를 `batch-infer`에 전달한 결과 전부 `missing_audio`로 나타났으며,
+  backend 초기화는 0회였고 성공 index는 비어 있었다. 첫 stem을 선택하여 누락·모호함을
+  표시하는 SVG도 생성하였다. 산출물은 `outputs/phase5/frozen-batch/`, `frozen-visual/`에 있다.
 
-전체 길이의 기존 metro cache도 Python `render_stem()` API로 PNG/SVG에 연결했다.
+### 전체 길이 파형과 확률의 시간축 검증
+
+전체 길이의 기존 metro cache도 Python `render_stem()` API로 PNG/SVG에 연결하였다.
 `outputs/phase5/metro-full-demo.png`, `.svg`에는 원본 44,100 Hz / 1,653,688 samples의
 파형과 **938개 raw frame**, expected/detected 구간이 같은 시간축에 표시된다.
-PNG를 직접 열어 패널·축·범례·머리말이 겹치지 않는 것을 확인했다.
+PNG를 직접 열어 패널·축·범례·머리말이 겹치지 않는 것을 확인하였다.
 
 이 그림은 Phase 4의 `synthetic_full_track_demonstration` reference를 그대로 사용한다.
 Expected 구간은 **의도적으로 만든 전체 길이 fixture**이며 WAVES의 계획이나 영상 annotation이
-아니다. 이미지에 origin/status를 표시했으며 여기의 IoU를 실제 인식·동기화 성능으로 해석하면 안 된다.
-Raw cache나 원본 WAV를 변경하지 않고 그림을 생성했다.
+아니다. 이미지에 origin/status를 표시하였으며 해당 IoU는 실제 인식·동기화 성능을 나타내지 않는다.
+Raw cache나 원본 WAV를 변경하지 않고 그림을 생성하였다.
 
-현재 `C:\WAVES` checkout에는 실제 WAVES stem WAV가 없다. 공개 음원 및 합성 fixture의
-검증은 실행 경로와 시간 표현의 정확성을 확인하며, WAVES 생성 품질이나 영상 동기화 성능을
-입증하지 않는다. 다음 단계는 Phase 6의 controlled corruption 검증이다.
+## 적용 한계와 관련 기능
+
+기준 실행 당시 `C:\WAVES` checkout에는 실제 WAVES stem WAV가 없었다. 공개 음원과 합성
+fixture를 이용한 검증은 실행 경로와 시간 표현을 확인한 것이며, WAVES 생성 품질이나 영상
+동기화 성능을 입증하지 않는다. 음원 변형에 대한 모델과 지표의 반응은
+[Phase 6의 controlled corruption 실험](phase6-validation.md)에서 별도로 검증하였다.

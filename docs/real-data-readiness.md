@@ -1,32 +1,32 @@
-# 실제 WAVES 검증 준비와 남은 입력
+# 실제 WAVES 데이터의 가용성과 검증 절차
 
-확인일: 2026-09-29. WAVES HEAD `07af161`의 frozen 29개 clip / 62개 final stem을 조사했다.
-Phase 1~7 기능 구현은 완료했지만 **실제 WAVES 음원 평가와 운영 threshold 보정은 아직 수행하지 못했다.**
-이번에는 음원 위치 기록을 대조하고, 명시적인 mapping 후보를 보강하여 기존 CLI의 누락 처리를 검증했다.
-WAVES 저장소와 기존 예제 설정은 수정하지 않았다.
+조사 기준일: 2026-09-29. 대상: WAVES revision `07af161`의 frozen 29개 clip / 62개 final stem.
+이 문서는 생성 음원·metadata·검수 자료의 가용성, 수동 mapping 후보의 적용 범위와 실제 데이터 검증 절차를 정의한다.
+음원 위치 기록의 대조와 CLI 누락 처리 검증을 포함하며, **실제 WAVES 음원 평가와 운영 threshold 보정은 미수행 상태다.**
+Phase 1~7의 기능 계약과 사용법은 [프로젝트 개요](../README.md) 및 단계별 문서에 기술한다.
 
-## 현재 확인된 입력
+## 입력 자료와 가용성
 
-`C:\WAVES`의 숨김·Git 제외 파일까지 검색했지만 WAV/FLAC/MP3/OGG/M4A/AIFF/AAC가 없다.
+조사 대상 `C:\WAVES`의 숨김·Git 제외 파일까지 검색한 결과 WAV/FLAC/MP3/OGG/M4A/AIFF/AAC는 없었다.
 WAVES `README.md`, `docs/REPRODUCIBILITY.md`, `docs/DEVELOPMENT_CHECKPOINT_2026-08-11.md`도
 큰 평가 음원과 로컬 데모가 Git 밖에 있음을 명시한다. 다음 자료를 실제 실행 폴더에서 연결해야 한다.
 
-| 자료 | 확인 결과 | 다음 연결에 필요한 것 |
+| 자료 | 조사 결과 | 연결에 필요한 입력 |
 | --- | --- | --- |
 | Frozen finals/reports | 62개 final, 선택 attempt의 `audio_id`만 있음 | 실제 selected WAV 경로 또는 materialized metadata |
 | System evaluation manifest | 30개 clip / 66개 target의 과거 `waves_file` 기록 | 해당 실행 폴더와 실제 파일 |
-| Listening 18 manifest/UI | A/B/C 54개 음원 경로, 현재 모두 없음 | 음원과 method key; A/B/C만으로 WAVES를 식별하지 않음 |
+| Listening 18 manifest/UI | A/B/C 54개 음원 경로, 조사 시점에 모두 없음 | 음원과 method key; A/B/C만으로 WAVES를 식별하지 않음 |
 | Human alignment JSON | generated_waves 12행, original_waves 13행의 누음 평균 | 대상 WAV의 provenance, 별도 시간/품질 검수 기준 |
 
 가장 직접적인 입력은 WAVES 실행 결과의 `final/<clip_key>/metadata.json`, 같은 폴더의 `stem_NN.wav`,
 그리고 `sam_manifest.json` 또는 `dsp_reports/<clip_key>.json`이다. Final metadata의 file/hash와
 선택 attempt를 확인한다. Final metadata에는 계획 description/activity_intervals가 없으므로
-기존 adapter로 중간 자료를 조인한다. 파일을 제공하기 어려우면 실행 폴더의 실제 경로만 먼저 확인한다.
+기존 adapter로 중간 자료를 조인한다. 파일 연결에는 선택된 음원과 해당 metadata가 있는 실제 실행 경로가 필요하다.
 
 ## 과거 평가 경로 대조
 
 `data/system_eval/evaluation_manifest66.json`의 `(key, target_id)`를 frozen `(clip_key, candidate_id)`와
-대조했다. **57개 identity가 일치**하고, 기록된 `waves_file`의 candidate 번호와 선택 attempt도 일치한다.
+대조하였다. **57개 identity가 일치**하고, 기록된 `waves_file`의 candidate 번호와 선택 attempt도 일치한다.
 선택 attempt 불일치는 0개, system에만 있는 target은 9개다. 경로의 일치는 파일 bytes 검증을 뜻하지 않는다.
 
 기록 예:
@@ -59,11 +59,11 @@ ${WAVES_ROOT}/listening_test/foleybench5k_listening21_work/generated_condition/s
 따라서 method key와 실제 파일 없이 청취 점수를 현재 selected stem에 확정 연결하지 않는다.
 이 값들은 target가 clear/weak인 응답의 누음 평균이며, 전체 PASS/FAIL이나 onset 정답도 아니다.
 
-## 추가한 mapping 후보
+## Source mapping 후보와 적용 범위
 
 [`source_mappings.frozen-review.json`](../configs/source_mappings.frozen-review.json)은 최종 설명의
 명시적 alias로 구성한 18개 규칙이다. 대소문자/공백 정규화만 사용하며 descendant/foreign class를 추가하지 않는다.
-모든 class ID가 실제 모델 447개 출력과 pinned ontology에 있음을 확인했다.
+모든 class ID가 실제 모델 447개 출력과 pinned ontology에 있음을 확인하였다.
 **문자 설명을 모델 column에 연결하는 후보이지, 실제 음원으로 검증된 인식 성능이 아니다.**
 가상 장면의 웃음·엔진·whoosh는 렌더링된 음색을 들은 뒤 재검토한다. 광범위한 Engine class도
 차종이나 특정 hum 음색을 확인하는 근거가 아니다. 각 규칙의 `notes`에 해석 범위를 남겼다.
@@ -107,10 +107,10 @@ Unsupported 39개는 자동으로 광범위한 class에 넣지 않았다. 주요
 - 계획 충돌: `Repeated hand-tool chopping impacts on wood`의 retained 계획은 타격 사이 scraping/rustling이다.
   Relabel·role 변경·merge를 먼저 검토한다.
 
-Mapping 보강 전후 **mapping 필드를 제외한 62개 normalized stem 전체가 동일**한지 확인했다.
+Mapping 보강 전후 **mapping 필드를 제외한 62개 normalized stem 전체가 동일**한지 확인하였다.
 Planned 19 / ambiguous 43, parent-only support, 선택 attempt와 원본 provenance는 유지된다.
 
-## 이번에 실행한 검증과 산출물
+## Metadata 연결 및 누락 처리 검증
 
 아래 명령은 실제 WAV 없이도 metadata와 누락 처리를 재현한다. 두 번째 명령은
 `missing_audio` 62개 때문에 **의도대로 종료 코드 1**을 반환하며 이후 evaluate는 별도로 실행한다.
@@ -128,15 +128,15 @@ cd C:\multitrack-audio-filtering
 - Evaluate: evaluation/detection unavailable 62, metric 기여 0, 평균 null.
 - 기본 all-null 정책: unassigned 62, PASS/REVIEW/FAIL/UNSUPPORTED 판정 모두 0.
   Mapping의 unsupported 상태와 disabled 정책의 판정은 별개다.
-- 관련 기존 테스트 **97 passed**. Config/문서만 변경했으므로 모델 추론이나 전체 suite를 반복하지 않았다.
+- 관련 기존 테스트 **97 passed**. Config/문서만 변경하였으므로 모델 추론이나 전체 suite를 반복하지 않았다.
 
 Git 제외 `outputs/real-data-readiness/frozen-review/`에 normalized `stems.json`, `batch/`, `reports/`가 있다.
 추가 조사 산출물 `required-audio.csv`는 62개 selected audio ID, mapping/reference, 기록된 경로와
 system role을 나란히 제공한다. `inventory.json`은 입력 SHA-256과 집계/불변성 검증 결과다.
-이 두 조사 파일은 이번 대조에서 별도로 내보냈으며 위 세 CLI 명령이 생성하는 파일은 아니다.
+이 두 조사 파일은 2026-09-29 대조 과정에서 별도로 내보냈으며 위 세 CLI 명령이 생성하는 파일은 아니다.
 CSV의 경로는 파일을 찾기 위한 기록이며 `--audio-paths`용 JSON이나 확인된 음원 연결이 아니다.
 
-## 실제 입력 도착 후 진행 순서
+## 실제 음원 평가와 threshold 보정 절차
 
 1. 실제 실행 폴더를 확인하고 selected WAV를 metadata의 선택 attempt와 file/hash에 연결한다.
    Frozen 입력은 [Phase 3 형식](phase3-validation.md)의 명시적 `audio_id -> 실제 path` JSON을 만든다.
@@ -157,5 +157,5 @@ CSV의 경로는 파일을 찾기 위한 기록이며 `--audio-paths`용 JSON이
    표본이나 근거가 부족한 role은 null로 유지한다. 설정·mapping·모델·입력·분할의 hash와 검증 결과를
    함께 남겨야 운영 보정 결과로 부를 수 있다.
 
-현재 다음 단계에 필요한 입력은 **생성된 stem WAV가 있는 실행 폴더 경로**다.
-운영 보정까지 하려면 그 음원에 대응하는 검수 결과/시간 주석과 판정 기준도 필요하다.
+실제 평가의 선행 조건은 **생성된 stem WAV가 있는 실행 폴더와 선택 metadata의 연결**이다.
+운영 보정에는 해당 음원에 대응하는 검수 결과/시간 주석과 판정 기준을 추가로 요구한다.
