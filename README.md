@@ -1,184 +1,227 @@
 # WAVES stem SED validation
 
-WAVES가 생성한 stem을 frozen AudioSet-Strong SED 모델로 검사하는 독립적인 후처리 프로젝트입니다.
-WAVES 생성 파이프라인을 수정하거나 모델을 학습하지 않습니다.
+WAVES가 생성한 개별 소리 트랙(stem)의 소리 종류와 시간적 일관성을 평가하는 독립 후처리
+도구이다. 소리 종류와 발생 시간을 찾는 SED(Sound Event Detection)에 ATST-F Strong 모델을
+사용한다. 모델 가중치를 고정한 채 시간별 확률을 계산하고, 생성 계획과 비교하여
+지표·시각화·설정 기반 판정을 제공한다. WAVES 생성 코드는 수정하지 않으며 모델의 학습이나
+fine-tuning도 수행하지 않는다.
 
-현재 **Phase 1~7: frozen 추론, metadata/mapping, 역할별 평가, batch/시각화, controlled corruption과 설정 기반 판정**을 구현했습니다.
-WAVES의 planned support와 SED 출력 비교는 내부 consistency 검사이며,
-실제 영상과의 동기화를 입증하지 않습니다.
+현재 구현은 단일·batch 추론, metadata 정규화, 수동 source mapping, 역할별 시간 평가,
+시각화, controlled corruption, 선택적 판정을 포함한다. **실제 WAVES 생성 음원에서의
+성능 검증과 운영 threshold 보정은 아직 수행하지 않았다.**
 
-구조 분석, 확인된 metadata 누락, 단계별 계획은 [분석 문서](docs/phase1-analysis.md),
-추론 검증은 [Phase 2 검증 기록](docs/phase2-validation.md),
-metadata/mapping 사용법은 [Phase 3 문서](docs/phase3-validation.md),
-cache 기반 평가와 측정 단위는 [Phase 4 문서](docs/phase4-validation.md),
-batch/시각화 사용법은 [Phase 5 문서](docs/phase5-validation.md),
-파형 변형과 조작 전후 비교는 [Phase 6 문서](docs/phase6-validation.md),
-선택적인 판정 설정은 [Phase 7 문서](docs/phase7-validation.md)에 있습니다.
+## 평가 흐름
 
-실제 WAVES 평가를 위한 [입력 조사와 재개 순서](docs/real-data-readiness.md)를 정리했습니다.
-[추가 mapping 후보](configs/source_mappings.frozen-review.json)는 frozen 62개 중 23개를 연결합니다.
-현재 checkout에는 생성 음원이 없어 실제 평가와 운영 threshold 보정은 남아 있습니다.
-
-## 설정 기반 판정 (Phase 7)
-
-`evaluate`와 `visualize`에 `--filter-config`를 추가하면 계산된 metric에 정책을 적용합니다.
-기준이 없으면 판정하지 않습니다. [기본 설정](configs/filter.example.json)은 모두 null이며,
-실제 운영 기준은 validation 결과에 따라 별도 파일에 명시합니다.
-
-```powershell
-.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/stems.json --predictions outputs/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --filter-config configs/filter.example.json --output-dir outputs/filtered-reports
+```mermaid
+flowchart TD
+    A["WAVES stem WAV"] --> B["Frozen ATST-F: 시간별 447개 클래스 확률"]
+    B --> C["원시 확률 NPZ와 provenance"]
+    D["최종 metadata + 생성 계획"] --> E["소리 설명 · 역할 · 기대 구간 정규화"]
+    E --> F["명시적 source mapping"]
+    C --> G["목표 확률과 이벤트 구간 추출"]
+    F --> G
+    E --> H["onset · span · ambience 지표"]
+    G --> H
+    H --> I["JSON · CSV · 시간축 그림"]
+    H --> J["명시적 기준이 있는 경우 품질 판정"]
 ```
 
-숫자 경계 또는 `{"pass": 값, "fail": 값}`으로 REVIEW 구간을 설정할 수 있습니다.
-누락·모호한 근거는 REVIEW, 적용 가능한 역할의 미지원 mapping은 UNSUPPORTED로 남깁니다.
-JSON/CSV와 그림에 각 조건의 값·경계·결과를 기록하며, 정책 변경에 새 추론은 필요하지 않습니다.
-PASS는 명시한 시간 일관성 조건의 충족이며 전체 음질이나 영상 동기화의 보증은 아닙니다.
-자세한 [경계값·판정 순서·실행법](docs/phase7-validation.md)을 확인하세요.
+모델 추론, 이벤트 추출, 품질 판정의 설정을 분리한다. 계산한 확률을 저장한 cache를 생성하면
+검출 threshold·smoothing·판정 정책을 변경할 때 같은 확률을 재사용할 수 있다.
+비교 시간 기준(reference)의 기본값은 WAVES의 **생성 계획**이므로 결과는 계획과 음원의 내부 일관성을
+나타낸다. 실제 영상과의 동기화를 확인하려면 독립적인 시간 주석이 필요하다.
 
-## Controlled corruption (Phase 6)
+## 역할별 평가와 입출력
 
-원본 대조군을 보존하고 시간 이동, 구간 삭제/복제, 길이 단축/반복 연장 WAV를 만듭니다.
-각 변형은 독립적으로 생성되며 expected support는 그대로 유지합니다. 예제에는
-+100/200/500/1000ms 이동이 포함됩니다. 구간 편집 예제는 대상 음원에 맞게 바꿉니다.
+| 역할 | 평가 대상 | 주요 지표 |
+| --- | --- | --- |
+| `onset` | 짧은 이벤트의 횟수와 시작 시점 | 최적 일대일 matching, 누락·추가 이벤트, recall·precision, 시작 오차(ms) |
+| `span` | 목표 소리가 차지하는 구간 | 구간 합집합의 temporal IoU·coverage·precision, 경계 오차, 구간 밖 활성 시간(s) |
+| `ambience` | 기대 구간에서의 지속성 | occupancy, 시간 가중 원시 목표 확률, 구간 밖 활성 시간(s) |
 
-```powershell
-uv pip install --python .venv/Scripts/python.exe -e ".[corruption]"
-.venv/Scripts/python.exe -m waves_sed corrupt --stems outputs/stems.json --stem-id "실제 stem ID" --config configs/corruption.example.json --output-dir outputs/corruption/experiment
-.venv/Scripts/python.exe -m waves_sed batch-infer --stems outputs/corruption/experiment/stems.json --output-dir outputs/corruption/batch
-.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/corruption/experiment/stems.json --predictions outputs/corruption/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/corruption/reports
-.venv/Scripts/python.exe -m waves_sed compare-corruptions --experiment outputs/corruption/experiment/experiment.json --report outputs/corruption/reports/dataset.json --output-dir outputs/corruption/comparison
-```
+Source mapping은 최종 소리 설명을 모델의 실제 class ID에 연결한다. 명시한 alias만 사용하며
+여러 허용 클래스가 있으면 시점별 최대 확률을 목표 확률로 집계한다. `supported`는 평가할
+column을 연결할 수 있다는 뜻이며 실제 검출이나 품질 통과를 의미하지 않는다.
 
-`comparison.json/csv`에 metric 차이와 검출 구간 변화를 남깁니다. 비교에는 추론이나 오디오
-라이브러리가 필요하지 않습니다. 기존 실험 파일은 덮어쓰지 않으므로 생성에는 새 출력 경로를
-사용합니다. 원본 길이/채널/샘플레이트를 유지하며, 경계 손실과 중첩을 기록합니다.
-구간 복제가 실제 extra event 검출을 보장하지는 않습니다. [처리 정책과 실제 검증 결과](docs/phase6-validation.md)를 확인하세요.
+| 입력 | 용도 |
+| --- | --- |
+| 최종 stem WAV | 모델 추론과 파형 표시 |
+| Final metadata와 SAM manifest 또는 DSP report | 최종 label·role과 계획된 시간 구간 연결 |
+| Source mapping JSON | 최종 설명과 허용 클래스의 명시적 대응 |
+| Evaluation JSON | 검출 threshold, smoothing, 최소 이벤트 길이, onset matching 허용오차 |
+| 선택적 filter JSON | 계산된 지표에 적용할 PASS·REVIEW·FAIL 경계 |
 
-## Batch와 시간축 그림 (Phase 5)
+최종 WAVES metadata에는 description과 `activity_intervals`가 없으므로 중간 자료를
+candidate ID로 조인한다. Relabel·role 변경·merge 이력을 보존하고, semantic merge에서는
+선택된 parent의 계획 구간만 사용한다. 누락된 시간 구간이나 음원 경로는 추정하지 않는다.
 
-여러 stem을 처리할 때는 정규화 manifest를 `batch-infer`에 전달합니다. 하나의 frozen 모델로
-차례대로 추론하고, 일치하는 cache는 재사용합니다. 일부 stem이 실패해도 나머지를 계속 처리하며
-`batch-status.json`에 사유를 남깁니다. 성공한 cache만 `prediction-index.json`에 연결됩니다.
+주요 출력은 원시 NPZ, 정규화 stem JSON, `prediction-index.json`, stem·clip별 JSON,
+`dataset.json`, `stems.csv`, `clips.csv`, PNG/SVG 그림과 HTML 목록이다. 입력·모델·설정의
+출처와 SHA-256을 기록하며, 사용할 수 없는 지표는 0 대신 `null`과 사유로 남긴다.
 
-```powershell
-# 그림이 필요할 때 선택 설치. Batch cache 재사용/평가는 NumPy만으로 가능합니다.
-uv pip install --python .venv/Scripts/python.exe -e ".[visualization]"
+## 기술과 설치
 
-# stems.json과 mapping 경로는 자신의 실제 입력으로 바꿉니다.
-.venv/Scripts/python.exe -m waves_sed batch-infer --stems outputs/stems.json --output-dir outputs/batch
-.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/stems.json --predictions outputs/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/reports
-.venv/Scripts/python.exe -m waves_sed visualize --stems outputs/stems.json --predictions outputs/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/visuals
-```
+| 기술 | 역할 |
+| --- | --- |
+| Python·NumPy | CLI, 확률 배열, 이벤트 처리, 시간 지표와 보고서 |
+| PyTorch·torchaudio·einops | 고정 ATST-F 모델 실행, mel 및 patch 변환 |
+| librosa·soundfile | 오디오 읽기·리샘플링, 변형 WAV 저장 |
+| AudioSet ontology | 클래스 계층과 ID 확인 |
+| Matplotlib | 파형·확률·기대 및 검출 구간 시각화 |
+| pytest·Ruff | 동작 검증, lint와 format 검사 |
 
-`outputs/visuals/index.html`에서 stem별 그림을 확인합니다. PNG 기본 출력에
-`--format svg`를 사용하면 SVG를 저장하고, `--stem-id "실제 ID"`로 하나만 선택할 수 있습니다.
-원본 파형의 min/max, expected support, raw/median target 확률과 detected 구간이 같은 시간축에
-표시됩니다. 누락되거나 모호한 자료는 그림에도 명시하며 확률 0이나 정상 판정으로 대체하지 않습니다.
-
-Batch는 matching cache만 재사용하고, 기존 cache가 손상되거나 입력/모델이 다르면 충돌로
-남깁니다. `--overwrite`를 명시하면 cache를 새로 추론합니다. 실패가 하나라도 있으면 종료 코드는
-1이며 나머지 성공 결과는 보존됩니다. 원본 audio와 입력 metadata는 덮어쓰지 않습니다.
-
-## Cache 기반 시간 평가 (Phase 4)
-
-`adapt-waves`로 만든 metadata와 해당 stem에서 추론한 raw NPZ를 연결합니다.
-Prediction index는 `{"schema_version":1,"predictions":{"실제 stem_id":"../predictions/stem.npz"}}`
-형식이며 상대 경로는 index 파일 기준입니다. 설정을 바꿔도 추론을 다시 실행하지 않습니다.
-
-```powershell
-.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/phase3/stems.json --predictions outputs/phase4/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/phase4/reports
-```
-
-위 metadata/index 경로는 실제 파일로 바꿉니다. 출력은 stem/clip별 JSON, `dataset.json`,
-`stems.csv`, `clips.csv`입니다. onset은 최적 일대일 matching, span은 구간 합집합의 IoU/coverage,
-ambience는 occupancy와 시간 가중 raw confidence를 계산합니다. NumPy만으로 실행할 수 있습니다.
-
-WAVES 계획이 `ambiguous`이면 기본적으로 시간 평가에서 제외합니다. 누락된 cache/reference와
-미지원 mapping은 `unavailable` 사유와 `metrics=null`로 남깁니다. Source/cache SHA-256과 전체
-관측 시간축을 확인하며, outside-family evidence를 자동 실패로 판정하지 않습니다.
-판정 설정을 생략하면 `decision=null`이며 예제 threshold는 아직 보정되지 않았습니다.
-
-현재 저장된 실제 공개 예제 cache로 threshold 변경·report 출력을 확인하는 명령:
-
-```powershell
-.venv/Scripts/python.exe scripts/verify_cached_evaluation.py --prediction outputs/predictions/metro.npz --audio .cache/PretrainedSED/test_files/752547__iscence__milan_metro_coming_in_station.wav --class-id /m/0195fx --output-dir outputs/phase4/metro-demo
-```
-
-이 검증의 expected support는 **의도적인 전체 길이 synthetic fixture**이며 WAVES 계획이나
-영상 annotation이 아닙니다. 실제 WAVES 음원 품질 검증에는 해당 run의 WAV와 cache가 필요합니다.
-
-## WAVES metadata와 source mapping (Phase 3)
-
-실제 frozen 자료 29개 clip/62개 stem을 모델 없이 정규화할 수 있습니다.
-
-```powershell
-.venv/Scripts/python.exe -m waves_sed adapt-waves --frozen-finals C:/WAVES/data/frozen_pass2/frozen_finals.json --frozen-reports C:/WAVES/data/frozen_pass2/frozen_reports.json --mappings configs/source_mappings.example.json --output outputs/phase3/frozen-stems.json
-.venv/Scripts/python.exe -m waves_sed map-source --description "dog barking" --mappings configs/source_mappings.example.json
-```
-
-실제 WAVES 실행 결과는 `adapt-waves --metadata ... --sam-manifest ...` 또는 `--dsp-report ...`로
-연결합니다. Mapping은 최종 label을 기준으로 명시적 alias만 사용합니다.
-설정에 없는 설명은 `unsupported_mapping`으로 남기고, planned description·role·시간·merge 이력은
-별도로 보존합니다. `supported`는 mapping 가능 여부이며 소리 검출이나 품질 통과를 의미하지 않습니다.
-
-공식 ontology와 ATST-F vocabulary에는 차이가 있습니다. 447개 모델 ID 중 31개는 공식 archive에
-없고, 11개는 표시명이 다릅니다. 실제 ID를 보존하여 차이를 보고하며 없는 hierarchy는 추정하지 않습니다.
-상세한 누락/시간 기준 정책과 cache의 target max 집계는 [Phase 3 문서](docs/phase3-validation.md)를 참고하세요.
-
-## 설치 및 실행 (PowerShell)
-
-검증 환경: Windows / Python 3.11.9 / CPU. WAVES와 별도 환경을 사용합니다.
-NumPy만 설치하면 raw cache를 읽을 수 있고, `[atst]` 추가 의존성은 추론에만 필요합니다.
-PyTorch/torchaudio는 모델과 mel 변환, einops는 ATST patch 변환,
-librosa/soundfile은 upstream과 동일한 오디오 읽기·리샘플링에 사용합니다.
+검증 환경은 Windows·Python 3.11.9·CPU이다. WAVES와 별도 가상환경을 사용한다.
+아래 작업 경로와 이후의 `C:/path/to/...`, `C:/runs/demo/...`는 예시이며 실제 경로로 대체한다.
+기존 `.venv`가 있으면 환경 생성은 생략한다.
 
 ```powershell
 cd C:\multitrack-audio-filtering
 uv venv --python 3.11 .venv
 uv pip install --python .venv/Scripts/python.exe -r requirements-cpu.txt
 
-# 공식 약 329 MiB 체크포인트 다운로드. 이미 있으면 SHA-256만 검증합니다.
+# 시각화와 파형 변형을 사용할 경우 선택 설치
+uv pip install --python .venv/Scripts/python.exe -e ".[visualization,corruption]"
+
+# 공식 약 329 MiB checkpoint 다운로드. 기존 파일은 SHA-256을 검증한다.
 .venv/Scripts/python.exe -m waves_sed download
+```
 
-# 임의의 WAV: mono 변환, 16 kHz 리샘플링, frozen CPU 추론
-.venv/Scripts/python.exe -m waves_sed infer C:/path/to/stem.wav --output outputs/predictions/stem.npz
+`uv` 대신 `py -3.11 -m venv .venv`와
+`.venv/Scripts/python.exe -m pip install -r requirements-cpu.txt`를 사용할 수 있다.
+기본 패키지는 NumPy만 요구하며, `[atst]`는 새 모델 추론, `[visualization]`은 그림,
+`[corruption]`은 변형 음원 생성에 필요한 선택 의존성이다. CPU requirements는 추론과 개발
+의존성을 설치한다. Cache 조회·평가·판정에는 모델이나 checkpoint가 필요하지 않다.
 
-# 모델/체크포인트 없이 raw cache 조회, 선택적으로 CSV 출력
+CUDA 실행은 검증하지 않았다. CUDA 환경에서는 해당 플랫폼과 호환되는 torch/torchaudio
+2.10.0 및 `.[atst]`를 설치하고 추론에 `--device cuda`를 지정한다. CUDA를 요청하였으나
+사용할 수 없는 경우 새 추론은 오류를 반환한다.
+
+## 기본 실행 순서
+
+### 1. 단일 WAV 추론
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed infer C:/path/to/stem.wav --output outputs/predictions/stem.npz --device cpu --threads 4
 .venv/Scripts/python.exe -m waves_sed inspect outputs/predictions/stem.npz --csv outputs/predictions/stem.csv
 ```
 
-`uv` 없이도 `py -3.11 -m venv .venv`와
-`.venv/Scripts/python.exe -m pip install -r requirements-cpu.txt`를 사용할 수 있습니다.
-기존 `.venv`가 있으면 생성 명령을 다시 실행할 필요가 없습니다.
-CUDA 환경은 이 작업에서 검증하지 않았습니다. 별도 환경에 해당 플랫폼의 호환되는
-torch/torchaudio 2.10.0을 설치한 뒤 `pip install -e ".[atst]"`, `--device cuda`를 사용합니다.
-명시적으로 CUDA를 요청했는데 사용 불가능하면 새 추론은 오류를 반환합니다.
+입력을 mono·16 kHz로 변환하여 추론한다. 같은 입력과 모델의 유효한 cache가 있으면
+재사용하며, 다른 입력이나 손상된 cache를 자동 덮어쓰지 않는다. 새 추론을 강제할 때는
+`--overwrite`를 지정한다. 단일 추론은 모델 동작을 확인하는 경로이며, 여러 stem의 평가는
+아래의 metadata 정규화와 batch 명령으로 연결한다.
 
-같은 입력/모델/provenance에 해당하는 출력이 이미 있으면 `infer`는 모델 로딩 없이
-cache를 재사용합니다. 입력 파일의 내용이나 모델 설정이 다르면 기존 cache를 덮어쓰지 않고
-오류를 반환합니다. 새 추론을 강제하려면 `--overwrite`를 사용합니다.
-재사용은 checkpoint 파일이 없어도 가능하며, 실행 환경(device/dependency) 변경만으로
-기존 확률을 다시 계산하지 않습니다. 기존 결과의 실행 환경은 metadata에 남아 있습니다.
-기본 CPU thread 수는 4이며 `--threads`로 조절합니다.
+### 2. WAVES metadata 정규화와 mapping
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed adapt-waves --metadata C:/runs/demo/final/clip_01/metadata.json --sam-manifest C:/runs/demo/sam_manifest.json --mappings configs/source_mappings.example.json --output outputs/stems.json
+.venv/Scripts/python.exe -m waves_sed map-source --description "dog barking" --mappings configs/source_mappings.example.json
+```
+
+SAM manifest 대신 `--dsp-report`를 사용할 수 있으며, 둘 다 지정하면 계획 필드의 일치
+여부를 검사한다. Mapping 설정은 실제 최종 label에 맞게 작성한다. 예제에 없는 설명은
+`unsupported_mapping`으로 남는다.
+
+Frozen JSON은 다음과 같이 정규화한다. 이 명령만으로 실제 음원 경로가 생기지는 않는다.
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed adapt-waves --frozen-finals C:/WAVES/data/frozen_pass2/frozen_finals.json --frozen-reports C:/WAVES/data/frozen_pass2/frozen_reports.json --mappings configs/source_mappings.example.json --output outputs/frozen-stems.json
+```
+
+Frozen 음원을 연결하려면 명시적 `audio_id → path` 객체를 담은 파일을 `--audio-paths`로
+전달한다. 상대 경로의 기준과 정규화 schema는 [Phase 3 문서](docs/phase3-validation.md)에 있다.
+[검토 후보 mapping](configs/source_mappings.frozen-review.json)은 frozen 62개 중 **23개**를
+연결하며, 생성 음원에서 인식 정확도를 검증한 설정은 아니다.
+
+### 3. 여러 stem의 추론
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed batch-infer --stems outputs/stems.json --output-dir outputs/batch
+```
+
+하나의 frozen 모델로 여러 stem을 처리하고 유효한 cache는 재사용한다. 일부 stem이 실패해도
+나머지 결과를 보존한다. `batch-status.json`에 실패 사유를 기록하고, 성공한 cache만
+`prediction-index.json`에 연결한다. 실패가 하나라도 있으면 종료 코드는 1이다.
+
+### 4. 시간 지표와 보고서 생성
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/stems.json --predictions outputs/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/reports
+```
+
+Prediction index는 `{"schema_version":1,"predictions":{"실제 stem_id":"../predictions/stem.npz"}}`
+형식이며 상대 경로는 index 파일 기준이다. Source/cache SHA-256과 전체 관측 시간축을
+검사한다. WAVES 계획이 `ambiguous`이면 기본적으로 시간 지표 계산에서 제외한다.
+역할별 측정 단위와 unavailable 사유는 [Phase 4 문서](docs/phase4-validation.md)에 있다.
+
+### 5. 시간축 시각화
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed visualize --stems outputs/stems.json --predictions outputs/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/visuals
+```
+
+`outputs/visuals/index.html`에 stem별 그림을 모은다. 원본 파형의 min/max, 기대 구간,
+raw/median 목표 확률과 검출 구간을 같은 시간축에 표시한다. 기본 PNG 대신 `--format svg`를
+지정하거나 `--stem-id "실제 ID"`로 한 stem만 선택할 수 있다.
+
+## 설정 기반 판정
+
+`evaluate`와 `visualize`에 `--filter-config`를 추가하면 지표에 판정 정책을 적용한다.
+[기본 설정](configs/filter.example.json)의 threshold는 모두 `null`이며 기본적으로 판정은
+비활성이다. 검출 threshold와 품질 판정 threshold는 서로 다른 설정이다.
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/stems.json --predictions outputs/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --filter-config configs/filter.example.json --output-dir outputs/filtered-reports
+```
+
+| 결과 | 의미 |
+| --- | --- |
+| `PASS` | 사용 가능한 근거에서 해당 역할의 활성 기준을 모두 충족 |
+| `FAIL` | 사용 가능한 근거에서 활성 기준의 실패 조건에 해당 |
+| `REVIEW` | 근거 누락·모호함, 필요한 지표 부재 또는 경계 사이의 검토 구간 |
+| `UNSUPPORTED` | 활성 정책에서 역할이나 mapping을 지원하지 않음 |
+| `null` | 판정 정책이 없거나 해당 역할의 기준이 비활성 |
+
+숫자 또는 `{"pass": 값, "fail": 값}`으로 경계를 지정한다. Onset은 recall과 평균 시작 오차,
+span은 temporal IoU, ambience는 occupancy를 판정에 사용할 수 있다. 조건별 지표값·경계·사유를
+보고서와 그림에 기록한다. Outside-family 활성도는 자동 실패 조건으로 사용하지 않는다.
+PASS는 설정한 조건의 충족이며 전체 음질이나 영상 동기화를 보증하지 않는다.
+파일을 자동 삭제하거나 이동하지 않는다. [판정 순서와 예제](docs/phase7-validation.md)에
+상세 계약이 있으며, 운영 경계값은 실제 검증 자료를 바탕으로 별도 보정해야 한다.
+
+## Controlled corruption
+
+원본 대조군을 보존하면서 시간 이동, 구간 삭제·복제, 길이 단축·반복 연장을 생성한다.
+각 변형은 원본에서 독립적으로 만들며 기대 시간 구간은 그대로 유지한다. 변형 WAV를 새로
+추론한 뒤 원본 대비 지표와 검출 구간의 변화를 비교하여 평가기의 반응을 확인한다.
+
+```powershell
+.venv/Scripts/python.exe -m waves_sed corrupt --stems outputs/stems.json --stem-id "실제 stem ID" --config configs/corruption.example.json --output-dir outputs/corruption/experiment
+.venv/Scripts/python.exe -m waves_sed batch-infer --stems outputs/corruption/experiment/stems.json --output-dir outputs/corruption/batch
+.venv/Scripts/python.exe -m waves_sed evaluate --stems outputs/corruption/experiment/stems.json --predictions outputs/corruption/batch/prediction-index.json --mappings configs/source_mappings.example.json --config configs/evaluation.example.json --output-dir outputs/corruption/reports
+.venv/Scripts/python.exe -m waves_sed compare-corruptions --experiment outputs/corruption/experiment/experiment.json --report outputs/corruption/reports/dataset.json --output-dir outputs/corruption/comparison
+```
+
+생성에는 기존 실험과 겹치지 않는 새 출력 경로를 사용한다. 원본 길이·채널·sample rate를
+유지하며 잘린 구간, 중첩 및 실제 변형 여부를 기록한다. 편집 구간은 대상 음원에 맞게
+설정한다. 복제가 독립된 추가 이벤트 검출을 보장하지는 않는다. 변형 정책과 공개 음원
+실험 결과는 [Phase 6 문서](docs/phase6-validation.md)에 있다.
 
 ## 원시 확률 형식
 
-NPZ는 pickle 없이 읽을 수 있습니다. smoothing, binary event 추출, 판정 threshold는
-적용하지 않습니다. CLI의 top classes는 최대 확률 순서의 확인용 요약입니다.
+NPZ는 pickle 없이 읽으며, smoothing·이벤트 추출·품질 판정을 적용하기 전의 결과이다.
 
-| 필드 | 형식 / 의미 |
+| 필드 | 형식과 의미 |
 | --- | --- |
 | `schema_version` | 현재 1 |
-| `probabilities` | float32 `[T, 447]`, sigmoid 이후 확률 |
-| `frame_start_seconds`, `frame_end_seconds` | float64 `[T]`, 초 단위 출력 bin `[start, end)` |
-| `class_ids`, `class_names` | 해당 checkpoint의 정확한 출력 순서, 문자열 447개 |
-| `metadata_json` | 입력/모델 hash, upstream revision, 전처리·chunk 정책, sample rate, dependency 버전 |
+| `probabilities` | float32 `[T, 447]`, sigmoid 이후 클래스별 확률 |
+| `frame_start_seconds`, `frame_end_seconds` | float64 `[T]`, 초 단위 bin `[start, end)` |
+| `class_ids`, `class_names` | checkpoint의 출력 순서에 대응하는 문자열 447개 |
+| `metadata_json` | 입력·모델 hash, upstream revision, 전처리·chunk 정책, sample rate, 의존성 버전 |
 
-10초 chunk마다 250개 frame을 계산합니다. 마지막 chunk는 zero pad하지만 padding-only
-frame은 저장하지 않고 마지막 bin 끝은 **원본 WAV duration**으로 제한합니다.
-리샘플링으로 올림된 sample duration은 `resampled_duration_seconds`에 따로 저장합니다.
-40ms bin은 출력 시간 축이며 실제 receptive field나 이벤트 경계의 정확도를 의미하지 않습니다.
-Transformer는 chunk 전체 문맥을 사용하고 10초 경계에서 문맥이 끊깁니다.
+10초 chunk마다 250개 frame을 계산한다. 마지막 chunk는 zero padding하되 padding-only
+frame은 저장하지 않고 마지막 bin 끝은 원본 WAV 길이로 제한한다. 리샘플링된 sample의
+길이는 `resampled_duration_seconds`로 구분한다. 40 ms는 출력 간격이며 이벤트 경계의
+정확도를 보장하지 않는다. Transformer는 chunk 전체 문맥을 사용하며 10초 경계에서 문맥이 끊긴다.
 
 ```python
 from waves_sed.prediction import FramePrediction
@@ -186,28 +229,33 @@ from waves_sed.prediction import FramePrediction
 prediction = FramePrediction.load("outputs/predictions/stem.npz")
 print(prediction.probabilities.shape)
 print(prediction.class_ids[0], prediction.class_names[0])
-# mapping된 class column들의 max로 P_target(t)를 계산합니다.
 ```
 
-공식 AudioSet ontology와 명시적 WAVES source mapping은 Phase 3에 구현했습니다.
-Event 추출과 metric/report는 Phase 4, 선택적인 필터 판정은 Phase 7에 구현했습니다. 447-class vocabulary와 ontology는
-서로 다른 metadata이며, class ID로 연결합니다.
+모델의 447-class vocabulary와 공식 ontology는 서로 다른 자료이며 class ID로 연결한다.
+공식 archive에는 모델 ID 31개가 없고, 공통 ID 중 11개는 표시명이 다르다. 차이를 기록하고
+없는 계층 관계를 추정하지 않는다.
 
-## 검증
+## 검증 범위와 남은 과제
+
+Phase 1~7의 구현 검증에는 공개 예제 WAV, 실제 WAVES frozen metadata, 합성 구간 및 변형
+음원을 사용하였다. Phase 7 완료본의 전체 테스트 기록(문서 commit `adb0a4f`)은
+**1,019 passed, 1 skipped**이다. 이 수치는 당시 실행 기록이며 실제 WAVES 음향 품질이나
+운영 성능의 측정값은 아니다.
 
 ```powershell
-# 모델 없이 실행할 테스트 (real-checkpoint test는 기본 skip)
 .venv/Scripts/python.exe -m pytest -q
-
-# 실제 checkpoint를 사용한 stereo / 22.05 kHz / 여러 chunk / 부분 tail 통합 테스트
-$env:WAVES_SED_CHECKPOINT = (Resolve-Path .cache/checkpoints/ATST-F_strong_1.pt).Path
-.venv/Scripts/python.exe -m pytest -q
-
 .venv/Scripts/ruff.exe check src tests scripts
 .venv/Scripts/ruff.exe format --check src tests scripts
+
+# 실제 checkpoint 통합 테스트를 포함할 경우
+$env:WAVES_SED_CHECKPOINT = (Resolve-Path .cache/checkpoints/ATST-F_strong_1.pt).Path
+.venv/Scripts/python.exe -m pytest -q
 ```
 
-upstream과 수치 비교를 재현하려면 (일반 추론에는 upstream clone이 필요하지 않습니다):
+실제 checkpoint 테스트는 해당 환경변수가 없으면 skip된다. 공개 WAV의 upstream 수치 비교,
+checkpoint hash와 실행 환경은 [Phase 2 검증 기록](docs/phase2-validation.md)에 있다.
+수치 비교용 clone이 없는 경우 프로젝트 루트에서 다음과 같이 고정 revision을 준비한다.
+일반 추론에는 upstream clone이 필요하지 않다.
 
 ```powershell
 git clone https://github.com/fschmid56/PretrainedSED.git .cache/PretrainedSED
@@ -215,27 +263,25 @@ git -C .cache/PretrainedSED checkout 1aa47e482f7e89904cba2338999345025d8b4e36
 .venv/Scripts/python.exe scripts/verify_upstream.py --upstream .cache/PretrainedSED --checkpoint .cache/checkpoints/ATST-F_strong_1.pt --audio .cache/PretrainedSED/test_files/752547__iscence__milan_metro_coming_in_station.wav
 ```
 
-이 예제 WAV의 출처/라이선스는 [third-party 기록](THIRD_PARTY_NOTICES.md)에 있습니다.
-소스 WAV·checkpoint·생성 NPZ는 Git에 넣지 않습니다.
+공개 음원의 전체 길이를 reference로 사용한 데모는 synthetic fixture이며 영상 주석이 아니다.
 
-## WAVES 연결 시 주의할 실제 차이
+실데이터 조사 당시 `C:\WAVES`에는 생성 WAV가 없었다. 실제 평가에는 materialized run 또는
+명시적 음원 경로 mapping이 필요하다. 이후 source mapping을 음원과 대조하고, 독립 검수 자료로
+역할별 지표와 판정 경계의 유효성을 확인해야 한다. 입력 조건과 절차는
+[실데이터 준비 현황](docs/real-data-readiness.md)에 정리되어 있다.
 
-`C:\WAVES`의 최종 `final/<key>/metadata.json`에는 label/role과 candidate provenance가 있지만,
-description과 `activity_intervals`는 없습니다. adapter는 SAM manifest 또는 DSP report를
-candidate ID로 조인합니다. 특히 relabel, role 변경, merge가 있으면 기존 planned support의
-의미가 달라질 수 있어 그 상태를 보존해야 합니다. 현재 WAVES checkout에는 실제 WAV가 없어
-이번 추론 검증에는 upstream의 공개 예제 WAV를 사용했습니다.
+## Phase별 코드와 문서
 
-## 단계별 계획
+| Phase | 책임 | 주요 코드 | 문서 |
+| --- | --- | --- | --- |
+| 1 | WAVES 산출물·의존성 조사와 설계 | WAVES schema·materializer 조사 | [설계 기록](docs/phase1-analysis.md) |
+| 2 | Frozen 단일 WAV 추론·확률 cache | `audio.py`, `backends/atst.py`, `prediction.py` | [추론 검증](docs/phase2-validation.md) |
+| 3 | Metadata 정규화·ontology·source mapping | `adapters/waves.py`, `metadata.py`, `ontology.py`, `mapping.py` | [입력과 mapping](docs/phase3-validation.md) |
+| 4 | 이벤트 추출·시간 지표·보고서 | `events.py`, `temporal_reference.py`, `temporal_metrics.py`, `evaluation.py`, `reporting.py` | [시간 평가](docs/phase4-validation.md) |
+| 5 | Batch 추론·시각화 | `batch.py`, `visualization.py` | [Batch와 그림](docs/phase5-validation.md) |
+| 6 | 변형 생성·원본 대비 비교 | `corruption.py`, `corruption_experiment.py`, `corruption_comparison.py` | [변형 실험](docs/phase6-validation.md) |
+| 7 | 명시적 품질 판정 정책 | `decision.py` | [판정 계약](docs/phase7-validation.md) |
 
-구현 순서:
-
-1. WAVES 산출물과 의존성 조사
-2. ATST-F Strong checkpoint 로딩, frozen inference, raw frame probability 저장
-3. WAVES metadata adapter, ontology 및 명시적 source mapping
-4. 역할별 temporal metric과 JSON/CSV report
-5. 시각화와 batch 처리
-6. controlled corruption 평가
-7. 명시적 설정에 따른 PASS / REVIEW / FAIL / UNSUPPORTED 판단 (여기까지 완료, calibration 별도)
-
-모델·오디오·추론 출력은 Git에 넣지 않습니다. 주요 작업 단위마다 로컬 커밋을 남깁니다.
+코드 경로는 `src/waves_sed/` 기준이다. 모델·음원·추론 산출물은 Git에서 제외한다.
+라이선스와 외부 자료 출처는 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), 문서 작성 기준은
+[WRITING_GUIDE.md](docs/WRITING_GUIDE.md), 개발 상태와 운영 인수인계는 [HANDOFF.md](HANDOFF.md)에 있다.
